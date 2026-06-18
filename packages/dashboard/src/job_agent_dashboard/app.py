@@ -2,6 +2,7 @@
 
 import json
 import os
+import time
 from pathlib import Path
 
 import httpx
@@ -471,53 +472,91 @@ elif page == "🗺️ Pipeline Graph":
 elif page == "📡 Live Status":
     st.title("📡 Pipeline Live Status")
 
+    # Auto-refresh toggle
+    auto_refresh = st.toggle("🔄 Auto-refresh (every 3s)", value=True)
+
     status_data = get_api("/status")
     if "error" in status_data:
         st.error(f"Cannot fetch status: {status_data['error']}")
     else:
         pipeline = status_data.get("pipeline", {})
 
-        # Phase indicator
+        # ── Step Progress Bar ──
         phase = pipeline.get("phase", "idle")
-        phase_colors = {
-            "idle": "🔘", "searching": "🔍", "matching": "📊",
-            "tailoring": "📝", "applying": "🚀", "emailing": "📧",
-            "completed": "✅", "failed": "❌",
-        }
-        st.markdown(f"### {phase_colors.get(phase, '⚙️')} Phase: **{phase.upper()}**")
+        steps = ["idle", "searching", "matching", "tailoring", "applying", "completed"]
+        step_labels = ["🔘 Idle", "🔍 Searching", "📊 Matching", "📝 Tailoring", "🚀 Applying", "✅ Done"]
 
-        if pipeline.get("current_job"):
-            job = pipeline["current_job"]
-            st.info(f"Current: **{job.get('title', '?')}** @ {job.get('company', '?')}")
+        current_idx = steps.index(phase) if phase in steps else 0
+        if phase == "failed":
+            current_idx = -1  # special handling
 
-        # Stats
-        stats = pipeline.get("stats", {})
-        cols = st.columns(5)
-        cols[0].metric("Searched", stats.get("searched", 0))
-        cols[1].metric("Matched", stats.get("matched", 0))
-        cols[2].metric("Applied", stats.get("applied", 0))
-        cols[3].metric("Emailed", stats.get("emailed", 0))
-        cols[4].metric("Errors", stats.get("errors", 0))
+        st.markdown("### Pipeline Progress")
+        cols = st.columns(len(steps))
+        for i, (step, label) in enumerate(zip(steps, step_labels)):
+            with cols[i]:
+                if phase == "failed":
+                    st.markdown(f"<div style='text-align:center;color:red'>❌<br><small>{step.title()}</small></div>", unsafe_allow_html=True)
+                elif i < current_idx:
+                    st.markdown(f"<div style='text-align:center;color:green'>✅<br><small>{step.title()}</small></div>", unsafe_allow_html=True)
+                elif i == current_idx:
+                    st.markdown(f"<div style='text-align:center;color:orange;font-weight:bold'>⏳<br><small><b>{step.title()}</b></small></div>", unsafe_allow_html=True)
+                else:
+                    st.markdown(f"<div style='text-align:center;color:gray'>⬜<br><small>{step.title()}</small></div>", unsafe_allow_html=True)
+
+        # Progress bar
+        if phase == "completed":
+            st.progress(1.0, text="Pipeline completed!")
+        elif phase == "failed":
+            st.progress(0.0, text="Pipeline failed")
+        elif current_idx > 0:
+            st.progress(current_idx / (len(steps) - 1), text=f"Step {current_idx}/{len(steps) - 1}: {phase.title()}")
 
         st.divider()
 
-        # Recent I/O
-        st.subheader("Recent Activity (Raw I/O)")
+        # ── Current Job ──
+        if pipeline.get("current_job"):
+            job = pipeline["current_job"]
+            st.info(f"🎯 Currently processing: **{job.get('title', '?')}** @ {job.get('company', '?')}")
+
+        # ── Live Stats ──
+        stats = pipeline.get("stats", {})
+        c1, c2, c3, c4, c5 = st.columns(5)
+        c1.metric("🔍 Searched", stats.get("searched", 0))
+        c2.metric("📊 Matched", stats.get("matched", 0))
+        c3.metric("🚀 Applied", stats.get("applied", 0))
+        c4.metric("📧 Emailed", stats.get("emailed", 0))
+        c5.metric("❌ Errors", stats.get("errors", 0))
+
+        st.divider()
+
+        # ── Live Activity Feed ──
+        st.subheader("📜 Live Activity Feed")
         records = status_data.get("recent_io", [])
         if records:
             for r in reversed(records[-20:]):
                 direction_icon = {"input": "➡️", "output": "⬅️", "error": "🔴"}.get(r["direction"], "•")
                 duration_str = f" ({r['duration_ms']:.0f}ms)" if r.get("duration_ms") else ""
+                node = r.get("node", "?")
+                ts = r.get("timestamp", "")
+
+                # Color-coded by node
+                node_colors = {
+                    "search": "🔍", "match": "📊", "tailor": "📝",
+                    "apply": "🚀", "email": "📧",
+                }
+                node_icon = node_colors.get(node, "⚙️")
+
                 with st.expander(
-                    f"{direction_icon} [{r['timestamp'][11:19]}] **{r['node']}** {r['direction']}{duration_str}"
+                    f"{direction_icon} [{ts[11:19]}] {node_icon} **{node}** {r['direction']}{duration_str}",
+                    expanded=False,
                 ):
                     st.json(r["data"])
         else:
-            st.info("No activity recorded yet.")
+            st.info("No activity recorded yet. Start the pipeline from **🚀 Run Pipeline**.")
 
         st.divider()
 
-        # Errors
+        # ── Errors ──
         st.subheader("🔴 Errors")
         errors = status_data.get("errors", [])
         if errors:
@@ -526,8 +565,9 @@ elif page == "📡 Live Status":
         else:
             st.success("No errors.")
 
-    # Auto-refresh
-    if st.button("🔄 Refresh"):
+    # Auto-refresh via st.rerun
+    if auto_refresh:
+        time.sleep(3)
         st.rerun()
 
 
