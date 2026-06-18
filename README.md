@@ -1,113 +1,181 @@
-# Job Apply Agent v0.2 🤖
+# Agentic Job Apply 🤖
 
-An **agentic AI system** that automatically searches for jobs, evaluates fit, tailors your resume, and applies — powered by **local Ollama LLM** with **RAG**, **MCP**, and **A2A** protocol support.
+An **agentic AI system** that automatically searches for remote jobs, evaluates fit, tailors your resume, and applies — powered by **local Ollama LLM** with **RAG**, **MCP**, and **A2A** protocol support.
 
-## Architecture
+---
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         PROTOCOL LAYER                              │
-│   MCP Server (tools)  │  A2A Server (agent discovery + tasks)       │
-│   FastAPI HTTP         │  /.well-known/agent.json                   │
-├─────────────────────────────────────────────────────────────────────┤
-│                        ORCHESTRATOR                                  │
-│   Event Bus  │  Pipeline Coordination  │  Rate Limiting             │
-├──────────┬──────────────┬───────────────┬───────────────────────────┤
-│  Search  │   Matcher    │    Resume     │    Application            │
-│  Agent   │   Agent      │    Agent      │    Agent                  │
-│          │              │               │                           │
-│ Plugins: │ AI scoring   │ AI generation │ Browser automation        │
-│ • Indeed │ + RAG context│ + RAG context │ + AI form mapping         │
-│ • LinkedIn│             │               │                           │
-│ • (more) │              │               │                           │
-├──────────┴──────────────┴───────────────┴───────────────────────────┤
-│                        SERVICES LAYER                                │
-│  LLM Provider │ RAG (ChromaDB) │ Database │ Browser │ HTTP Client   │
-├─────────────────────────────────────────────────────────────────────┤
-│                         CORE LAYER                                   │
-│  Interfaces │ Models │ Event Bus │ Plugin Registry │ DI Container   │
-└─────────────────────────────────────────────────────────────────────┘
-```
+## ✨ Features
 
-## Key Design Patterns
-
-| Pattern | Implementation |
-|---------|---------------|
-| **Dependency Inversion** | All agents depend on interfaces (`LLMProvider`, `VectorStore`, `JobSource`), not concrete classes |
-| **Plugin System** | Job sources (Indeed, LinkedIn) are registered plugins — add new ones without modifying existing code |
-| **Event Bus** | Decoupled inter-agent communication via publish/subscribe events |
-| **RAG** | Past applications, job descriptions, and profile indexed in ChromaDB for context-enriched AI decisions |
-| **MCP Protocol** | External AI systems can use our agents as tools via standard Model Context Protocol |
-| **A2A Protocol** | Google's Agent-to-Agent protocol for agent discovery and task routing |
-| **DI Container** | Single composition root wires all dependencies — easy to test and swap implementations |
-| **Template Engine** | Prompts separated from logic via Jinja2 templates |
-
-## Features
-
-- **Multi-agent architecture** with clear separation of concerns
-- **100% local AI** via Ollama — data never leaves your machine
-- **RAG-augmented decisions** — learns from past applications
+- **Multi-agent pipeline** — Search → Match → Tailor Resume → Apply (fully automated)
+- **100% local AI** via Ollama (llama3.1 + nomic-embed-text) — data never leaves your machine
+- **RAG-augmented decisions** — learns from past applications via ChromaDB
 - **MCP server** — use from Claude, VS Code Copilot, or any MCP client
-- **A2A protocol** — discoverable by other AI agents
-- **Pluggable job sources** — add Glassdoor, RemoteOK, etc. easily
+- **A2A protocol** — discoverable by other AI agents (Google's Agent-to-Agent)
+- **Real-time dashboard** — Streamlit UI with WebSocket live updates
+- **Per-source rate limiting** with health monitoring
+- **Success rate tracking** — analytics by source, score range, outcomes
+- **High-match instant alerts** — Telegram/Slack notifications for 90%+ matches
+- **Interview prep generator** — AI-generated Q&A for applied jobs
+- **CSV/JSON export** of all application data
 - **Browser automation** — Playwright fills forms with AI-guided field mapping
 - **Safety first** — `auto_submit=false` by default, screenshots for review
-- **Scheduled runs** — automatic periodic searching
-- **Rich CLI** — beautiful terminal output
 
-## Quick Start
+---
+
+## 🏗️ Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                          PROTOCOL LAYER                                  │
+│   MCP Server (tools)  │  A2A Server (tasks)  │  WebSocket (live updates)│
+│   FastAPI HTTP :8000   │  /.well-known/agent.json                       │
+├─────────────────────────────────────────────────────────────────────────┤
+│                         ORCHESTRATOR (LangGraph)                         │
+│   Event Bus  │  Pipeline Coordination  │  Rate Limiting  │  Caching    │
+├──────────┬──────────────┬───────────────┬───────────────────────────────┤
+│  Search  │   Matcher    │    Resume     │    Application                │
+│  Agent   │   Agent      │    Agent      │    Agent                      │
+│          │              │               │                               │
+│ Sources: │ AI scoring   │ AI generation │ Browser automation            │
+│ • RemoteOK│ + RAG context│ + cover letter│ + AI form mapping            │
+│ • Remotive│ + alerts    │ + RAG context │ + email applications          │
+│ • Rocketship│           │               │ + follow-up scheduling        │
+├──────────┴──────────────┴───────────────┴───────────────────────────────┤
+│                         SERVICES LAYER                                   │
+│  LLM (Ollama) │ RAG (ChromaDB) │ SQLite │ Browser │ Notifications      │
+├─────────────────────────────────────────────────────────────────────────┤
+│                          CONTRACTS LAYER                                 │
+│  Interfaces │ Models │ Events │ Plugin Registry │ Error Handling        │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 📦 Project Structure (uv Monorepo)
+
+```
+job-apply-agent/
+├── packages/
+│   ├── contracts/          # Abstract interfaces, models, events
+│   ├── services/           # Infrastructure (LLM, DB, scrapers, notifications)
+│   ├── agents/             # AI agents + LangGraph workflow
+│   ├── server/             # FastAPI server (MCP + A2A + REST API)
+│   └── dashboard/          # Streamlit real-time UI
+├── cli/                    # CLI commands
+├── config/                 # Job source configuration
+├── tests/                  # Unit + integration tests (40 passing)
+├── data/vectordb/          # ChromaDB persistence
+├── pyproject.toml          # Workspace root
+└── docker-compose.yml      # Containerized deployment
+```
+
+---
+
+## 🚀 Quick Start
 
 ### Prerequisites
 
-1. **Python 3.11+**
-2. **Ollama** ([ollama.com](https://ollama.com))
+- **Python 3.11+**
+- **Ollama** ([ollama.com](https://ollama.com))
+- **uv** (recommended) or pip
 
 ```bash
+# Pull required models
 ollama pull llama3.1
-ollama pull nomic-embed-text  # For RAG embeddings
+ollama pull nomic-embed-text
 ```
 
 ### Installation
 
 ```bash
 cd job-apply-agent
-python -m venv .venv
-.venv\Scripts\activate        # Windows
-# source .venv/bin/activate   # Linux/Mac
 
+# Install with uv (recommended)
+uv sync
+
+# Or with pip
 pip install -e .
+
+# Install browser for automation
 playwright install chromium
 ```
 
-### Setup
+### Run the Server
 
 ```bash
-job-agent init    # Creates dirs + .env template
-# Edit .env with your profile and preferences
+# Start FastAPI server (port 8000)
+python -m job_agent_server.main
+
+# Start Streamlit dashboard (port 8501)
+streamlit run packages/dashboard/src/job_agent_dashboard/app.py
 ```
 
-### Usage
+### Docker
 
 ```bash
-# Search only (safe mode)
-job-agent run --search-only
-
-# Full pipeline
-job-agent run
-
-# Run on schedule
-job-agent schedule
-
-# Start MCP + A2A server
-job-agent serve
-
-# Stats
-job-agent status
+docker-compose up
 ```
 
-## MCP Integration
+---
 
-Start the server and add to your MCP client config:
+## 🖥️ Dashboard Pages
+
+| Page | Description |
+|------|-------------|
+| 🔍 **Search Jobs** | Trigger job searches across all sources |
+| 🚀 **Run Pipeline** | Start full end-to-end pipeline with live status |
+| 📋 **Pipeline Results** | View matched jobs, scores, cover letters |
+| 🎯 **Interview Prep** | AI-generated questions for applied jobs |
+| 📈 **Analytics** | Success rates by source, score range, outcomes |
+| 🏥 **Source Health** | Rate limit usage, latency, errors per source |
+
+---
+
+## 🔌 API Endpoints
+
+### Core
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/health` | Health check |
+| `GET` | `/ready` | Readiness with dependency checks |
+| `GET` | `/status` | Full pipeline status |
+| `WS` | `/ws` | WebSocket live updates |
+
+### Jobs & Analytics
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/jobs` | List all jobs (optional `?status=` filter) |
+| `GET` | `/jobs/{id}` | Job detail with match data |
+| `POST` | `/jobs/{id}/outcome` | Record outcome (interview/offer/rejected) |
+| `GET` | `/analytics` | Success rate analytics |
+| `GET` | `/follow-ups` | Applications due for follow-up |
+| `POST` | `/interview-prep/{id}` | Generate interview questions |
+
+### Export & Monitoring
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/export/csv` | Download all data as CSV |
+| `GET` | `/export/json` | Download all data as JSON |
+| `GET` | `/sources/health` | All sources rate limit status |
+| `GET` | `/sources/health/{name}` | Specific source health |
+
+### Protocols
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/.well-known/agent.json` | A2A agent card |
+| `POST` | `/a2a/tasks/send` | Send task to agent |
+| `POST` | `/mcp/tools/list` | List MCP tools |
+| `POST` | `/mcp/tools/call` | Call MCP tool |
+
+---
+
+## 🔧 MCP Integration
+
+Add to your MCP client config:
 
 ```json
 {
@@ -119,124 +187,35 @@ Start the server and add to your MCP client config:
 }
 ```
 
-Available MCP tools:
-- `search_jobs` — Search for matching jobs
-- `match_job` — Score job-profile fit
-- `generate_cover_letter` — Create tailored cover letter
-- `get_application_stats` — Get stats
-- `apply_to_job` — Submit application
+**Available tools:** `search_jobs`, `match_job`, `generate_cover_letter`, `apply_to_job`, `get_application_stats`
 
-## A2A Protocol
+---
 
-Agent card available at: `http://localhost:8000/.well-known/agent.json`
+## 🧩 Key Design Patterns
 
-Other A2A-compatible agents can discover and send tasks to this agent.
-
-## Project Structure
-
-```
-src/job_apply_agent/
-├── core/                      # Shared infrastructure
-│   ├── interfaces.py          # Abstract interfaces (LLM, VectorStore, JobSource)
-│   ├── models.py              # Pydantic data models
-│   ├── events.py              # Event bus (pub/sub)
-│   └── registry.py            # Plugin registry
-├── services/                  # Reusable service implementations
-│   ├── llm.py                 # Ollama LLM provider
-│   ├── rag.py                 # RAG service (ChromaDB + retrieval)
-│   ├── database.py            # SQLite persistence
-│   ├── browser.py             # Playwright automation
-│   └── http_client.py         # Shared HTTP client
-├── agents/                    # Independent agents
-│   ├── base.py                # Base agent (A2A-compatible)
-│   ├── search_agent.py        # Job discovery + source plugins
-│   ├── matcher_agent.py       # Profile matching with RAG
-│   ├── resume_agent.py        # Resume/cover letter with RAG
-│   ├── apply_agent.py         # Browser form filling
-│   └── orchestrator.py        # Pipeline coordinator
-├── protocols/                 # External protocol support
-│   ├── mcp_server.py          # MCP tool definitions
-│   ├── a2a_server.py          # A2A protocol server
-│   └── http_server.py         # FastAPI endpoints
-├── prompts/                   # Prompt templates (separated from logic)
-│   └── templates/
-│       ├── match_job.j2
-│       ├── tailor_summary.j2
-│       ├── cover_letter.j2
-│       ├── extract_requirements.j2
-│       └── form_mapping.j2
-├── config.py                  # Settings management
-├── container.py               # Dependency injection
-└── cli.py                     # CLI commands
-```
-
-## Extending
-
-### Add a new job source
-
-```python
-from job_apply_agent.core.interfaces import JobSource
-from job_apply_agent.core.registry import registry
-
-class GlassdoorSource(JobSource):
-    @property
-    def name(self) -> str:
-        return "glassdoor"
-
-    async def search(self, title, location, **kwargs):
-        # Your implementation
-        ...
-
-    async def fetch_details(self, url):
-        ...
-
-# Register the plugin
-registry.register_job_source(GlassdoorSource())
-```
-
-### Swap LLM provider
-
-```python
-from job_apply_agent.core.interfaces import LLMProvider
-
-class OpenAIProvider(LLMProvider):
-    async def generate(self, prompt, system="", temperature=0.7):
-        # OpenAI implementation
-        ...
-```
-
-### Add event listeners
-
-```python
-from job_apply_agent.core.events import event_bus, EventType
-
-async def on_job_applied(event):
-    # Send notification, update spreadsheet, etc.
-    print(f"Applied to {event.data['job_id']}")
-
-event_bus.subscribe(EventType.JOB_APPLIED, on_job_applied)
-```
-
-## RAG: How It Works
-
-The RAG system improves AI decisions by providing relevant context:
-
-1. **Indexing**: Job descriptions, application outcomes, and your profile are embedded and stored in ChromaDB
-2. **Retrieval**: Before any AI call, relevant past data is retrieved
-3. **Augmentation**: Retrieved context is injected into prompts
-
-Example: When matching a new "Senior Python Engineer" role, RAG retrieves your past applications to similar roles, so the AI knows which approaches worked.
-
-## Similar Projects
-
-| Project | Differentiator |
+| Pattern | Implementation |
 |---------|---------------|
-| [AIHawk](https://github.com/AIHawk-JEYZ/Auto_Jobs_Applier_AIHawk) | Uses OpenAI, LinkedIn-focused |
-| [AutoApply](https://github.com/Liam-Frost/AutoApply) | Multi-platform, human gating |
-| **This project** | Local AI, RAG, MCP/A2A, plugin architecture |
+| **Dependency Inversion** | Agents depend on interfaces, not concrete classes |
+| **Plugin System** | Job sources are registered plugins — add new ones without modifying code |
+| **Event Bus** | Decoupled pub/sub communication between agents |
+| **RAG** | ChromaDB-powered context for AI decisions |
+| **Rate Limiting** | Per-source token bucket with health tracking |
+| **DI Container** | Single composition root wires all dependencies |
+| **Template Engine** | Jinja2 prompt templates separated from logic |
 
-## License
+---
+
+## 🧪 Testing
+
+```bash
+# Run all tests
+python -m pytest tests/ -v
+
+# Current: 40 tests passing
+```
+
+---
+
+## 📄 License
 
 MIT
-#   A g e n t i c - J o b - A p p l y  
- 
