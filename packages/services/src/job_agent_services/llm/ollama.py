@@ -15,7 +15,7 @@ from pydantic import BaseModel, ValidationError
 
 from job_agent_contracts.interfaces import LLMProvider
 from job_agent_contracts.errors import LLMUnavailableError
-from job_agent_services.resilience import CircuitBreaker
+from job_agent_services.resilience import CircuitBreaker, CircuitBreakerConfig
 from job_agent_services.observability.tracing import tracer
 
 logger = logging.getLogger(__name__)
@@ -46,7 +46,10 @@ class OllamaProvider(LLMProvider):
         self._embed_model = embed_model
         self._model_overrides = model_overrides or {}
         self._client: httpx.AsyncClient | None = None
-        self._circuit = CircuitBreaker(failure_threshold=5, recovery_timeout=30.0)
+        self._circuit = CircuitBreaker(
+            "ollama",
+            CircuitBreakerConfig(failure_threshold=5, recovery_timeout_secs=30.0),
+        )
         self._cache: OrderedDict[str, Any] = OrderedDict()
         self._cache_size = cache_size
 
@@ -95,7 +98,7 @@ class OllamaProvider(LLMProvider):
     async def generate(self, prompt: str, system: str = "", temperature: float = 0.7,
                        model: str = "", task: str = "") -> str:
         """Generate text completion (traced, circuit-breaker protected)."""
-        if self._circuit.is_open:
+        if not self._circuit.is_available:
             raise LLMUnavailableError("ollama")
 
         resolved_model = self.resolve_model(model, task)
@@ -126,7 +129,7 @@ class OllamaProvider(LLMProvider):
     async def generate_json(self, prompt: str, system: str = "",
                             model: str = "", task: str = "") -> dict[str, Any]:
         """Generate structured JSON output (traced, cached, circuit-breaker protected)."""
-        if self._circuit.is_open:
+        if not self._circuit.is_available:
             raise LLMUnavailableError("ollama")
 
         resolved_model = self.resolve_model(model, task)
