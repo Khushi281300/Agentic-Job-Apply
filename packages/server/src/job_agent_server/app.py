@@ -527,12 +527,37 @@ def create_api_app(mcp_server, a2a_server, db=None, llm=None) -> FastAPI:
         queue = RetryQueue()
         return await queue.get_stats()
 
+    @app.get("/retry-queue/pending")
+    async def retry_queue_pending():
+        """Get pending tasks ready for retry."""
+        from job_agent_services.retry_queue import RetryQueue
+        queue = RetryQueue()
+        return await queue.get_pending()
+
     @app.get("/retry-queue/dead-letters")
     async def retry_dead_letters():
         """Get tasks that exhausted all retries."""
         from job_agent_services.retry_queue import RetryQueue
         queue = RetryQueue()
         return await queue.get_dead_letters()
+
+    @app.post("/retry-queue/{record_id}/retry", dependencies=[Depends(_verify_api_key)])
+    async def retry_queue_requeue(record_id: int):
+        """Re-enqueue a dead-letter task for another round of retries."""
+        from job_agent_services.retry_queue import RetryQueue
+        queue = RetryQueue()
+        await queue.initialize()
+        async with queue._session_factory() as session:
+            from job_agent_services.retry_queue import RetryRecord
+            record = await session.get(RetryRecord, record_id)
+            if not record:
+                raise HTTPException(status_code=404, detail="Record not found")
+            record.status = "pending"
+            record.attempts = 0
+            from datetime import datetime as _dt
+            record.next_retry_at = _dt.now()
+            await session.commit()
+        return {"status": "requeued", "id": record_id}
 
     # ─── Scheduler ───────────────────────────────────────────────────────────
 
@@ -789,6 +814,33 @@ def create_api_app(mcp_server, a2a_server, db=None, llm=None) -> FastAPI:
         if db is None:
             raise HTTPException(status_code=503, detail="Database not available")
         return await db.get_stats()
+
+    @app.get("/jobs/review-queue")
+    async def jobs_review_queue():
+        """Get matched jobs awaiting human review (approve/reject)."""
+        if db is None:
+            raise HTTPException(status_code=503, detail="Database not available")
+        from job_agent_contracts.models import JobStatus
+        jobs = await db.get_jobs_by_status(JobStatus.MATCHED)
+        return jobs
+
+    class JobDecisionRequest(BaseModel):
+        action: str  # "approve" or "reject"
+
+    @app.post("/jobs/{job_id}/decision", dependencies=[Depends(_verify_api_key)])
+    async def job_decision(job_id: str, req: JobDecisionRequest):
+        """Approve or reject a matched job."""
+        if db is None:
+            raise HTTPException(status_code=503, detail="Database not available")
+        from job_agent_contracts.models import JobStatus
+        if req.action == "approve":
+            await db.update_status(job_id, JobStatus.APPLYING)
+            return {"status": "approved", "job_id": job_id}
+        elif req.action == "reject":
+            await db.update_status(job_id, JobStatus.REJECTED)
+            return {"status": "rejected", "job_id": job_id}
+        else:
+            raise HTTPException(status_code=400, detail="action must be 'approve' or 'reject'")
 
     # ─── Runtime Configuration ───────────────────────────────────────────────
 
