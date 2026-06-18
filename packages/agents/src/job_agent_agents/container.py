@@ -20,6 +20,8 @@ from job_agent_services.notifications.service import NotificationService
 from job_agent_services.sources.remoteok import RemoteOKSource
 from job_agent_services.sources.remotive import RemotiveSource
 from job_agent_services.sources.remoterocketship import RemoteRocketshipSource
+from job_agent_services.sources.loader import load_sources_from_yaml, get_rate_limits_from_yaml
+from job_agent_services.sources.rate_limiter import source_rate_limiter
 
 
 class Container:
@@ -76,8 +78,15 @@ class Container:
         from job_agent_agents.skills.executor import SkillExecutor
         self.skill_executor = SkillExecutor(llm=self.llm, rag=self.rag)
 
-        # Job sources (free APIs + scrapers)
+        # Job sources: hardcoded Python sources + YAML-driven generic sources
         self.job_sources = [RemoteOKSource(), RemotiveSource(), RemoteRocketshipSource()]
+        yaml_sources = load_sources_from_yaml()
+        self.job_sources.extend(yaml_sources)
+
+        # Register YAML rate limits into the global rate limiter
+        yaml_limits = get_rate_limits_from_yaml()
+        for src_name, limit in yaml_limits.items():
+            source_rate_limiter._limits[src_name] = limit
 
         # Notification service (for high-match alerts, errors)
         self.notifier = NotificationService(
