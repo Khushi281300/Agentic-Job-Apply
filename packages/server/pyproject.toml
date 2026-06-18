@@ -1,0 +1,25 @@
+[project]
+name = "job-agent-server"
+version = "0.3.0"
+description = "HTTP server with MCP + A2A protocol endpoints"
+requires-python = ">=3.11"
+dependencies = [
+    "job-agent-contracts",
+    "job-agent-services",
+    "job-agent-agents",
+    # Server
+    "fastapi>=0.109.0",
+    "uvicorn>=0.27.0",
+    # MCP Protocol
+    "mcp>=1.0.0",
+]
+
+[project.scripts]
+job-agent-server = "job_agent_server.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/job_agent_server"]

@@ -1,0 +1,21 @@
+Analyze this job posting and determine how to apply:
+
+## Job Title: {{ job.title }}
+## Company: {{ job.company }}
+## Description:
+{{ job.description[:2000] }}
+
+{% if job.requirements %}
+## Requirements:
+{% for req in job.requirements[:10] %}
+- {{ req }}
+{% endfor %}
+{% endif %}
+
+Determine:
+1. What is the application method? (form = web form/portal, email = send CV to an email, link = just a tracking link)
+2. If email: what is the contact email address?
+3. Any specific application instructions mentioned?
+4. How confident are you? (0.0 = guessing, 1.0 = explicitly stated)
+
+Return JSON: {"method": "form|email|link", "contact_email": "", "instructions": "", "confidence": 0.0}

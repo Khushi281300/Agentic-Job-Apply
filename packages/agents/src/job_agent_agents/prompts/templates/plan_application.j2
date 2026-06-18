@@ -1,0 +1,29 @@
+Plan the application strategy for this job.
+
+## Job
+- Title: {{ job.title }}
+- Company: {{ job.company }}
+- URL: {{ job.url }}
+- Requirements: {{ job.requirements[:10] | join(', ') }}
+
+## Match Score: {{ match.overall_score | round(2) }}
+- Matched Skills: {{ match.matched_skills | join(', ') }}
+- Missing Skills: {{ match.missing_skills | join(', ') }}
+
+## User Profile
+- Name: {{ user.name }}
+- Title: {{ user.title }}
+- Experience: {{ user.experience_years }} years
+
+## Decide:
+1. Can we apply directly (standard form), or does this need special handling?
+2. What documents are needed? (resume, cover letter, portfolio, references)
+3. Are there likely custom questions we need to prepare for?
+4. Should we prioritize this application (high match) or defer?
+
+Return a JSON object with:
+- strategy: "direct_apply" | "research_first" | "defer"
+- documents_needed: list of strings
+- custom_prep: list of preparation steps
+- priority: "high" | "medium" | "low"
+- reasoning: brief explanation

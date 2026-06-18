@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install ruff mypy
+          pip install -e packages/contracts -e packages/services -e packages/agents -e packages/server -e cli
+
+      - name: Lint with Ruff
+        run: ruff check packages/ cli/ tests/
+
+      - name: Type check
+        run: mypy packages/ --ignore-missing-imports
+
+  test:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -e packages/contracts -e packages/services -e packages/agents -e packages/server -e packages/dashboard -e cli
+          pip install pytest pytest-asyncio pytest-cov
+
+      - name: Run tests
+        run: pytest tests/ -v --tb=short
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: htmlcov/
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install bandit
+        run: pip install bandit
+
+      - name: Run security scan
+        run: bandit -r packages/ -ll
+
+  build:
+    runs-on: ubuntu-latest
+    needs: [test, security]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t job-apply-agent:${{ github.sha }} .
+
+      - name: Test Docker image
+        run: docker run --rm job-apply-agent:${{ github.sha }} python -c "from job_agent_agents import Orchestrator; print('OK')"

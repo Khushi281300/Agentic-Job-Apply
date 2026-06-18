@@ -1,0 +1,15 @@
+Classify the following job listing into structured categories.
+
+## Job Details
+- Title: {{ job.title }}
+- Company: {{ job.company }}
+- Location: {{ job.location }}
+- Description: {{ job.description[:1500] }}
+
+## Classify Into:
+- job_type: one of [full-time, part-time, contract, internship]
+- seniority: one of [junior, mid, senior, lead, principal, executive]
+- domain: one of [backend, frontend, fullstack, data, devops, mobile, ml, security, other]
+- remote_type: one of [remote, hybrid, onsite, unknown]
+
+Return a JSON object with these four fields.

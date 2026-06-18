@@ -1,0 +1,30 @@
+Write a professional cover letter for this job application.
+
+Candidate:
+- Name: {{ user.name }}
+- Email: {{ user.email }}
+- Experience: {{ user.years_of_experience }} years
+- Skills: {{ user.skills | join(', ') if user.skills else 'General' }}
+- Education: {{ user.education | join(', ') if user.education else 'Not specified' }}
+- Summary: {{ user.summary }}
+
+Job:
+- Title: {{ job.title }}
+- Company: {{ job.company }}
+- Description: {{ job.description[:1500] }}
+- Requirements: {{ job.requirements[:10] | join(', ') }}
+- Matched Skills: {{ matched_skills | join(', ') }}
+- Missing Skills: {{ missing_skills[:5] | join(', ') }}
+
+{% if rag_context %}
+## Insights from Past Applications to Similar Roles:
+{{ rag_context }}
+{% endif %}
+
+Guidelines:
+- Keep it to 3-4 paragraphs
+- Be specific about why this company/role is interesting
+- Highlight matched skills with concrete examples
+- Address any skill gaps positively (eager to learn)
+- Professional but personable tone
+- Do NOT include placeholders like [Company Address]

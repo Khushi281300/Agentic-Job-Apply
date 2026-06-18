@@ -1,0 +1,39 @@
+Evaluate this job match and return JSON with scores.
+
+## Candidate Profile:
+- Name: {{ user.name }}
+- Location: {{ user.location }}
+- Years of Experience: {{ user.years_of_experience }}
+- Skills: {{ user.skills | join(', ') if user.skills else 'Not specified' }}
+- Education: {{ user.education | join(', ') if user.education else 'Not specified' }}
+- Summary: {{ user.summary }}
+- Desired Titles: {{ search.titles | join(', ') }}
+- Desired Locations: {{ search.locations | join(', ') }}
+- Minimum Salary: ${{ "{:,}".format(search.min_salary) }}
+- Experience Level: {{ search.experience_level }}
+
+{% if rag_context %}
+## Context from Past Applications:
+{{ rag_context }}
+{% endif %}
+
+## Job Listing:
+- Title: {{ job.title }}
+- Company: {{ job.company }}
+- Location: {{ job.location }}
+- Type: {{ job.job_type }}
+- Salary Range: {{ job.salary_range or 'Not specified' }}
+- Description: {{ job.description[:2000] }}
+- Requirements: {{ job.requirements[:15] | join(', ') }}
+
+## Required JSON Response Format:
+{
+    "overall_score": 0.0-1.0,
+    "skill_match": 0.0-1.0,
+    "experience_match": 0.0-1.0,
+    "location_match": 0.0-1.0,
+    "salary_match": 0.0-1.0,
+    "reasoning": "Brief explanation of the match assessment",
+    "matched_skills": ["skill1", "skill2"],
+    "missing_skills": ["skill3", "skill4"]
+}

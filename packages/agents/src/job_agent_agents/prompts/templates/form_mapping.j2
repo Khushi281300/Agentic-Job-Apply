@@ -1,0 +1,17 @@
+Analyze this HTML form and map fields to candidate data.
+Return a JSON object with a "field_mappings" key containing CSS selectors mapped to values.
+
+Candidate Data:
+- Name: {{ user.name }}
+- Email: {{ user.email }}
+- Phone: {{ user.phone }}
+- Location: {{ user.location }}
+- LinkedIn: {{ user.linkedin_url }}
+- Portfolio: {{ user.portfolio_url }}
+- Summary: {{ cover_letter_excerpt }}
+
+Form HTML (truncated):
+{{ form_html[:3000] }}
+
+Return JSON like:
+{"field_mappings": {"#name": "John Doe", "#email": "john@example.com", "input[name='phone']": "+1234567890"}}

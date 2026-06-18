@@ -1,0 +1,39 @@
+Compose a professional application email for this role:
+
+## Job: {{ job.title }} at {{ job.company }}
+## Location: {{ job.location }}
+
+{% if job.requirements %}
+## Key Requirements:
+{% for req in job.requirements[:8] %}
+- {{ req }}
+{% endfor %}
+{% endif %}
+
+## My Profile:
+- Name: {{ user.name }}
+- Title: {{ user.title }}
+- Experience: {{ user.experience_years }} years
+- Key Skills: {{ user.skills[:8]|join(', ') }}
+
+{% if tailored and tailored.cover_letter %}
+## Cover Letter Context:
+{{ tailored.cover_letter[:500] }}
+{% endif %}
+
+{% if rag_context %}
+## Past Successful Applications (for tone reference):
+{{ rag_context[:400] }}
+{% endif %}
+
+{% if job.apply_instructions %}
+## Special Instructions from the Posting:
+{{ job.apply_instructions }}
+{% endif %}
+
+Write a professional application email. Return JSON:
+{
+  "subject": "Application: [Job Title] — [Your Name]",
+  "body_html": "<html>Professional email with greeting, intro, qualifications, call to action, sign-off</html>",
+  "body_plain": "Plain text version of the same email"
+}

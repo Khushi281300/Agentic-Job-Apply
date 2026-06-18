@@ -1,0 +1,21 @@
+Write a tailored professional summary (3-4 sentences) for a job application.
+
+Candidate:
+- Name: {{ user.name }}
+- Experience: {{ user.years_of_experience }} years
+- Skills: {{ user.skills | join(', ') if user.skills else 'General' }}
+- Current Summary: {{ user.summary }}
+
+Job:
+- Title: {{ job.title }}
+- Company: {{ job.company }}
+- Key Requirements: {{ job.requirements[:10] | join(', ') }}
+- Matched Skills: {{ matched_skills | join(', ') }}
+
+{% if rag_context %}
+## Context from Similar Past Applications:
+{{ rag_context }}
+{% endif %}
+
+Write a compelling summary that highlights relevant experience for THIS specific role.
+Do not include any JSON formatting, just the plain text summary.

@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "job-agent": {
+      "command": "python",
+      "args": ["-m", "job_agent_server.main"],
+      "cwd": "${workspaceFolder}"
+    }
+  }
+}

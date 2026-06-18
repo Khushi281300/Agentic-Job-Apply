@@ -1,0 +1,127 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Job Sources Configuration
+# ═══════════════════════════════════════════════════════════════════════════════
+# Add, remove, or modify job sources here. No code changes needed.
+# Just add a new entry and restart the agent.
+#
+# Each source needs:
+#   - name: unique identifier
+#   - type: scraper type (api_json, html_scrape, rss)
+#   - enabled: true/false
+#   - base_url: the main URL or API endpoint
+#   - search_url: URL pattern for searching (use {title} and {location} placeholders)
+#   - rate_limit: max requests per minute
+#   - headers: optional custom headers
+#   - selectors: CSS selectors for HTML scraping (only for type: html_scrape)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+sources:
+
+  - name: indeed
+    type: html_scrape
+    enabled: true
+    base_url: https://www.indeed.com
+    search_url: https://www.indeed.com/jobs?q={title}&l={location}&fromage=7
+    rate_limit: 5
+    headers:
+      Accept: text/html
+    selectors:
+      job_card: ".job_seen_beacon"
+      title: "h2.jobTitle a"
+      company: "[data-testid='company-name']"
+      location: "[data-testid='text-location']"
+      link: "h2.jobTitle a"
+      description: "#jobDescriptionText"
+
+  - name: linkedin
+    type: html_scrape
+    enabled: true
+    base_url: https://www.linkedin.com
+    search_url: https://www.linkedin.com/jobs/search/?keywords={title}&location={location}&f_TPR=r604800
+    rate_limit: 3
+    headers:
+      Accept: text/html
+    selectors:
+      job_card: ".base-search-card"
+      title: ".base-search-card__title"
+      company: ".base-search-card__subtitle"
+      location: ".job-search-card__location"
+      link: ".base-card__full-link"
+      description: ".description__text"
+
+  - name: remoteok
+    type: api_json
+    enabled: true
+    base_url: https://remoteok.com
+    search_url: https://remoteok.com/api
+    rate_limit: 10
+    headers:
+      Accept: application/json
+    json_mapping:
+      # Maps API response fields to our internal model
+      title: position
+      company: company
+      location: location
+      url: url
+      description: description
+      salary: salary
+      tags: tags
+      id_field: id
+      id_prefix: "remoteok_"
+    # First element in response is metadata, skip it
+    skip_first: true
+
+  - name: weworkremotely
+    type: rss
+    enabled: true
+    base_url: https://weworkremotely.com
+    search_url: https://weworkremotely.com/categories/remote-{category}-jobs.rss
+    rate_limit: 8
+    categories:
+      - back-end-programming
+      - front-end-programming
+      - full-stack-programming
+      - devops-sysadmin
+    rss_mapping:
+      title: title
+      company: company
+      url: link
+      description: description
+      id_field: guid
+      id_prefix: "wwr_"
+
+  - name: glassdoor
+    type: html_scrape
+    enabled: true
+    base_url: https://www.glassdoor.com
+    search_url: https://www.glassdoor.com/Job/jobs.htm?sc.keyword={title}&locKeyword={location}
+    rate_limit: 4
+    headers:
+      Accept: text/html
+    selectors:
+      job_card: "[data-test='jobListing']"
+      title: "[data-test='job-title']"
+      company: ".EmployerProfile_compactEmployerName__LE242"
+      location: "[data-test='emp-location']"
+      link: "[data-test='job-title']"
+      description: ".JobDetails_jobDescription__uW_fK"
+
+  # ─── Example: Adding a new source ─────────────────────────────────────────
+  # Just copy this template and fill in the details:
+  #
+  # - name: mynewjobboard
+  #   type: api_json          # or: html_scrape, rss
+  #   enabled: true
+  #   base_url: https://api.mynewjobboard.com
+  #   search_url: https://api.mynewjobboard.com/jobs?query={title}&loc={location}
+  #   rate_limit: 10
+  #   headers:
+  #     Authorization: "Bearer YOUR_API_KEY"
+  #   json_mapping:
+  #     title: job_title
+  #     company: employer_name
+  #     location: city
+  #     url: apply_url
+  #     description: job_description
+  #     id_field: job_id
+  #     id_prefix: "newboard_"

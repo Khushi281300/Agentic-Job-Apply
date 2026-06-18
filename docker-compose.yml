@@ -1,0 +1,57 @@
+services:
+  # Local Ollama LLM
+  ollama:
+    image: ollama/ollama:latest
+    container_name: job-agent-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    # Pull models on first start
+    entrypoint: >
+      sh -c "ollama serve &
+             sleep 5 &&
+             ollama pull llama3.1 &&
+             ollama pull nomic-embed-text &&
+             wait"
+
+  # Job Apply Agent
+  agent:
+    build: .
+    container_name: job-agent-app
+    depends_on:
+      - ollama
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./.env:/app/.env:ro
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+    restart: unless-stopped
+
+  # Optional: Streamlit Dashboard
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    container_name: job-agent-dashboard
+    depends_on:
+      - agent
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/app/data
+      - ./.env:/app/.env:ro
+    environment:
+      - AGENT_API_URL=http://agent:8000
+
+volumes:
+  ollama_data:
