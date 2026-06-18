@@ -234,7 +234,17 @@ def create_api_app(mcp_server, a2a_server, db=None, llm=None) -> FastAPI:
         if request.outcome not in valid:
             raise HTTPException(status_code=400, detail=f"Invalid outcome. Must be one of: {valid}")
         await db.record_outcome(job_id, request.outcome)
-        # Auto-schedule follow-up for 7 days after applying if no response yet
+
+        # Feed outcome into RAG for adaptive learning
+        try:
+            from job_agent_services.feedback import FeedbackService
+            from job_agent_services.stores.rag import RAGService
+            if llm and hasattr(app.state, "rag"):
+                feedback = FeedbackService(rag=app.state.rag, db=db)
+                await feedback.process_outcome(job_id, request.outcome)
+        except Exception:
+            pass  # Non-critical — don't fail the request
+
         return {"status": "recorded", "job_id": job_id, "outcome": request.outcome}
 
     @app.get("/analytics")
@@ -379,6 +389,91 @@ def create_api_app(mcp_server, a2a_server, db=None, llm=None) -> FastAPI:
         """Get health status for a specific source."""
         from job_agent_services.sources.rate_limiter import source_rate_limiter
         return source_rate_limiter.source_health(source_name)
+
+    # ─── Circuit Breaker Health ──────────────────────────────────────────────
+
+    @app.get("/circuit-breakers")
+    async def circuit_breaker_health():
+        """Get circuit breaker status for all sources."""
+        from job_agent_services.resilience import circuit_registry
+        return circuit_registry.health()
+
+    # ─── Application Timeline ────────────────────────────────────────────────
+
+    @app.get("/timeline")
+    async def get_timeline(job_id: str | None = None):
+        """Get application journey timeline (all jobs or a specific one)."""
+        if not db:
+            raise HTTPException(status_code=503, detail="Database not initialized")
+        return await db.get_timeline(job_id)
+
+    # ─── Adaptive Scoring ────────────────────────────────────────────────────
+
+    @app.get("/adaptive-thresholds")
+    async def get_adaptive_thresholds():
+        """Get dynamically computed match thresholds based on outcome history."""
+        if not db:
+            raise HTTPException(status_code=503, detail="Database not initialized")
+        from job_agent_services.adaptive import AdaptiveScoring
+        scorer = AdaptiveScoring(db=db)
+        thresholds = await scorer.compute_thresholds()
+        return {
+            "min_apply_score": thresholds.min_apply_score,
+            "alert_score": thresholds.alert_score,
+            "confidence": thresholds.confidence,
+            "sample_size": thresholds.sample_size,
+            "recommendation": thresholds.recommendation,
+        }
+
+    # ─── Profile Strength ────────────────────────────────────────────────────
+
+    @app.get("/profile/strength")
+    async def profile_strength():
+        """Analyze profile strength against market demand."""
+        if not db or not llm:
+            raise HTTPException(status_code=503, detail="Services not initialized")
+        from job_agent_services.profile.strength import ProfileStrengthScorer
+        scorer = ProfileStrengthScorer(db=db, llm=llm)
+        report = await scorer.analyze()
+        return report.to_dict()
+
+    # ─── Salary Insights ─────────────────────────────────────────────────────
+
+    @app.get("/salary-insights")
+    async def salary_insights():
+        """Get aggregated salary ranges from scraped job data."""
+        if not db:
+            raise HTTPException(status_code=503, detail="Database not initialized")
+        from job_agent_services.salary import SalaryInsights
+        insights = SalaryInsights(db=db)
+        return await insights.get_market_ranges()
+
+    # ─── Retry Queue ─────────────────────────────────────────────────────────
+
+    @app.get("/retry-queue/stats")
+    async def retry_queue_stats():
+        """Get retry queue statistics."""
+        from job_agent_services.retry_queue import RetryQueue
+        queue = RetryQueue()
+        return await queue.get_stats()
+
+    @app.get("/retry-queue/dead-letters")
+    async def retry_dead_letters():
+        """Get tasks that exhausted all retries."""
+        from job_agent_services.retry_queue import RetryQueue
+        queue = RetryQueue()
+        return await queue.get_dead_letters()
+
+    # ─── Scheduler ───────────────────────────────────────────────────────────
+
+    @app.get("/scheduler/status")
+    async def scheduler_status():
+        """Get status of all scheduled tasks."""
+        scheduler = getattr(app.state, "scheduler", None)
+        if not scheduler:
+            return {"status": "not_configured", "tasks": {}}
+        return {"status": "running" if scheduler.is_running else "stopped",
+                "tasks": scheduler.status()}
 
     # ─── WebSocket Live Updates ──────────────────────────────────────────────
 

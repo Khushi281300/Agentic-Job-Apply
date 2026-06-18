@@ -45,7 +45,10 @@ page = st.sidebar.radio("Navigation", [
     "🎯 Interview Prep",
     "📈 Analytics",
     "🏥 Source Health",
-    "🗺️ Pipeline Graph",
+    "� Profile Strength",
+    "💰 Salary Insights",
+    "📅 Timeline",
+    "�🗺️ Pipeline Graph",
     "📡 Live Status",
     "⚙️ Settings",
 ])
@@ -702,6 +705,99 @@ elif page == "🏥 Source Health":
         if st.button("📥 Download JSON"):
             st.markdown(f"[Download JSON]({AGENT_API_URL}/export/json)")
 
+
+# ─── Profile Strength ────────────────────────────────────────────────────────
+
+elif page == "💪 Profile Strength":
+    st.title("💪 Profile Strength Analysis")
+    st.markdown("See how your profile stacks up against market demand.")
+
+    if st.button("🔍 Analyze My Profile"):
+        with st.spinner("Analyzing against job market data..."):
+            report = get_api("/profile/strength")
+
+        if isinstance(report, dict) and "error" in report:
+            st.error(f"Analysis failed: {report['error']}")
+        elif report:
+            score = report.get("overall_score", 0)
+            st.metric("Overall Strength", f"{score:.0%}")
+            st.progress(score)
+
+            c1, c2 = st.columns(2)
+            with c1:
+                st.subheader("✅ Strengths")
+                for skill in report.get("strengths", []):
+                    st.markdown(f"- {skill}")
+            with c2:
+                st.subheader("❌ Gaps")
+                for skill in report.get("gaps", []):
+                    st.markdown(f"- {skill}")
+
+            st.divider()
+            st.subheader("💡 Recommendations")
+            for rec in report.get("recommendations", []):
+                st.info(rec)
+
+            st.divider()
+            st.subheader("📊 Market Demand (Top Skills)")
+            demand = report.get("market_demand_top_skills", {})
+            if demand:
+                df = pd.DataFrame([
+                    {"Skill": k, "Mentions": v} for k, v in demand.items()
+                ])
+                st.bar_chart(df.set_index("Skill"))
+
+# ─── Salary Insights ─────────────────────────────────────────────────────────
+
+elif page == "💰 Salary Insights":
+    st.title("💰 Salary Market Insights")
+    st.markdown("Aggregated compensation data from scraped job listings.")
+
+    insights = get_api("/salary-insights")
+    if isinstance(insights, dict) and "error" in insights:
+        st.error(f"Cannot fetch salary data: {insights['error']}")
+    elif insights:
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Jobs Analyzed", insights.get("total_jobs_analyzed", 0))
+        c2.metric("With Salary Info", insights.get("jobs_with_salary", 0))
+        c3.metric("Coverage", f"{insights.get('coverage_pct', 0)}%")
+
+        st.divider()
+        ranges = insights.get("ranges_by_role", {})
+        if ranges:
+            for role, data in ranges.items():
+                with st.expander(f"**{role}** ({data['count']} jobs)"):
+                    c1, c2, c3 = st.columns(3)
+                    c1.metric("Min", f"${data['min']:,}")
+                    c2.metric("Median Range", f"${data['median_low']:,} - ${data['median_high']:,}")
+                    c3.metric("Max", f"${data['max']:,}")
+        else:
+            st.info("No salary data yet. Run searches to collect market data.")
+    else:
+        st.info("No data available.")
+
+# ─── Application Timeline ────────────────────────────────────────────────────
+
+elif page == "📅 Timeline":
+    st.title("📅 Application Timeline")
+    st.markdown("Track the journey of each application.")
+
+    timeline = get_api("/timeline")
+    if isinstance(timeline, dict) and "error" in timeline:
+        st.error(f"Cannot fetch timeline: {timeline['error']}")
+    elif timeline:
+        for item in timeline[:20]:
+            events = item.get("events", [])
+            stages = " → ".join(
+                f"**{e['stage'].title()}**" for e in events
+            )
+            with st.expander(f"📌 {item['title']} @ {item['company']} — {item['current_status']}"):
+                st.markdown(f"Journey: {stages}")
+                for e in events:
+                    col = "🟢" if e["stage"] in ("offer", "interview") else "🔵"
+                    st.markdown(f"{col} **{e['stage'].title()}** — {e.get('at', 'N/A')}")
+    else:
+        st.info("No applications tracked yet.")
 
 # ─── Settings ────────────────────────────────────────────────────────────────
 

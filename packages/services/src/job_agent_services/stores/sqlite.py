@@ -327,3 +327,46 @@ class Database:
                     for s, v in by_score.items()
                 },
             }
+
+    # ─── Application Timeline ────────────────────────────────────────────────
+
+    async def get_timeline(self, job_id: str | None = None) -> list[dict]:
+        """Get application timeline events (discovered → matched → applied → outcome).
+
+        If job_id is given, returns timeline for that job only.
+        Otherwise returns recent timeline across all jobs.
+        """
+        await self.initialize()
+        async with self._session_factory() as session:
+            query = select(JobRecord).order_by(JobRecord.discovered_at.desc())
+            if job_id:
+                query = query.where(JobRecord.id == job_id)
+            else:
+                query = query.limit(50)
+
+            result = await session.execute(query)
+            records = result.scalars().all()
+
+            timeline: list[dict] = []
+            for r in records:
+                events = []
+                if r.discovered_at:
+                    events.append({"stage": "discovered", "at": r.discovered_at.isoformat()})
+                if r.status in (JobStatus.MATCHED.value, JobStatus.APPLIED.value):
+                    events.append({"stage": "matched", "at": r.discovered_at.isoformat(),
+                                   "score": r.match_score})
+                if r.applied_at:
+                    events.append({"stage": "applied", "at": r.applied_at.isoformat()})
+                if r.outcome:
+                    events.append({"stage": r.outcome,
+                                   "at": r.outcome_at.isoformat() if r.outcome_at else ""})
+
+                timeline.append({
+                    "job_id": r.id,
+                    "title": r.title,
+                    "company": r.company,
+                    "current_status": r.status,
+                    "events": events,
+                })
+
+            return timeline

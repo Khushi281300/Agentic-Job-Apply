@@ -11,6 +11,7 @@ from job_agent_contracts.models import JobListing
 from job_agent_agents.prompts import render
 from job_agent_services.stores.sqlite import Database
 from job_agent_services.stores.rag import RAGService
+from job_agent_services.deduplication import JobDeduplicator
 from job_agent_services.registry import ServiceRegistry
 
 logger = logging.getLogger(__name__)
@@ -59,6 +60,10 @@ class JobSearchAgent(BaseAgent):
                 self.logger.error("Search task failed: %s", result)
             else:
                 all_jobs.extend(result)
+
+        # Deduplicate across sources
+        deduplicator = JobDeduplicator()
+        all_jobs = deduplicator.deduplicate(all_jobs)
 
         # Filter already-seen
         new_jobs = []
