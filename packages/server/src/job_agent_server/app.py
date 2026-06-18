@@ -209,6 +209,21 @@ def create_api_app(mcp_server, a2a_server, db=None, llm=None) -> FastAPI:
             return await db.get_jobs_by_status(js)
         return await db.get_all_jobs_detailed()
 
+    @app.get("/jobs/stats")
+    async def jobs_stats():
+        """Get job application statistics."""
+        if db is None:
+            raise HTTPException(status_code=503, detail="Database not available")
+        return await db.get_stats()
+
+    @app.get("/jobs/review-queue")
+    async def jobs_review_queue():
+        """Get matched jobs awaiting human review (approve/reject)."""
+        if db is None:
+            raise HTTPException(status_code=503, detail="Database not available")
+        from job_agent_contracts.models import JobStatus
+        return await db.get_jobs_by_status(JobStatus.MATCHED)
+
     @app.get("/jobs/{job_id}")
     async def get_job_detail(job_id: str):
         """Get full details for a single job (match scores, cover letter, etc.)."""
@@ -787,42 +802,7 @@ def create_api_app(mcp_server, a2a_server, db=None, llm=None) -> FastAPI:
             raise HTTPException(status_code=404, detail="No profile found. Upload a resume first.")
         return profile
 
-    # ─── Jobs API ────────────────────────────────────────────────────────────
-
-    @app.get("/jobs")
-    async def list_jobs(status: str = ""):
-        """List discovered jobs, optionally filtered by status."""
-        from job_agent_contracts.models import JobStatus
-        if db is None:
-            raise HTTPException(status_code=503, detail="Database not available")
-        if status:
-            try:
-                job_status = JobStatus(status)
-            except ValueError:
-                raise HTTPException(status_code=400, detail=f"Invalid status. Valid: {[s.value for s in JobStatus]}")
-            return await db.get_jobs_by_status(job_status)
-        # Return all
-        stats = await db.get_stats()
-        all_jobs = []
-        for s in JobStatus:
-            all_jobs.extend(await db.get_jobs_by_status(s))
-        return {"total": stats["total_discovered"], "jobs": all_jobs}
-
-    @app.get("/jobs/stats")
-    async def jobs_stats():
-        """Get job application statistics."""
-        if db is None:
-            raise HTTPException(status_code=503, detail="Database not available")
-        return await db.get_stats()
-
-    @app.get("/jobs/review-queue")
-    async def jobs_review_queue():
-        """Get matched jobs awaiting human review (approve/reject)."""
-        if db is None:
-            raise HTTPException(status_code=503, detail="Database not available")
-        from job_agent_contracts.models import JobStatus
-        jobs = await db.get_jobs_by_status(JobStatus.MATCHED)
-        return jobs
+    # ─── Jobs Decision ────────────────────────────────────────────────────
 
     class JobDecisionRequest(BaseModel):
         action: str  # "approve" or "reject"

@@ -66,11 +66,30 @@ class Database:
         self._initialized = False
 
     async def initialize(self) -> None:
-        """Create tables if they don't exist."""
+        """Create tables if they don't exist, and add any missing columns."""
         if not self._initialized:
             async with self._engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
+                # Auto-migrate: add columns that may be missing from older DBs
+                await self._add_missing_columns(conn)
             self._initialized = True
+
+    @staticmethod
+    async def _add_missing_columns(conn) -> None:
+        """Add columns that were introduced after initial schema creation."""
+        from sqlalchemy import text
+        result = await conn.execute(text("PRAGMA table_info(jobs)"))
+        existing = {row[1] for row in result.fetchall()}
+        migrations = [
+            ("outcome", "TEXT DEFAULT ''"),
+            ("outcome_at", "DATETIME"),
+            ("follow_up_at", "DATETIME"),
+            ("deadline", "DATETIME"),
+        ]
+        for col_name, col_type in migrations:
+            if col_name not in existing:
+                await conn.execute(text(f"ALTER TABLE jobs ADD COLUMN {col_name} {col_type}"))
+                logger.info("DB migration: added column '%s' to jobs table", col_name)
 
     # ─── Reusable Record Update Helper ───────────────────────────────────────
 
