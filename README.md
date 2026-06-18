@@ -6,19 +6,42 @@ An **agentic AI system** that automatically searches for remote jobs, evaluates 
 
 ## ✨ Features
 
+### Core Pipeline
 - **Multi-agent pipeline** — Search → Match → Tailor Resume → Apply (fully automated)
 - **100% local AI** via Ollama (llama3.1 + nomic-embed-text) — data never leaves your machine
 - **RAG-augmented decisions** — learns from past applications via ChromaDB
 - **MCP server** — use from Claude, VS Code Copilot, or any MCP client
 - **A2A protocol** — discoverable by other AI agents (Google's Agent-to-Agent)
-- **Real-time dashboard** — Streamlit UI with WebSocket live updates
+- **Browser automation** — Playwright fills forms with AI-guided field mapping
+- **Email applications** — auto-detects email jobs and sends with resume attachment
+- **Safety first** — `auto_submit=false` by default, screenshots for review
+
+### Intelligence & Learning
+- **Adaptive match thresholds** — learns optimal cutoffs from historical outcomes
+- **Outcome feedback loop** — indexes results into RAG for continuous learning
+- **Profile strength scoring** — analyzes your skills vs market demand
+- **Salary market insights** — aggregated compensation data from listings
+- **Semantic job deduplication** — fuzzy title+company matching avoids re-processing
+
+### Reliability & Observability
+- **Circuit breaker** — automatic failure detection with CLOSED/OPEN/HALF_OPEN states
+- **Retry queue** — persistent SQLite queue with exponential backoff + dead letters
+- **Multi-model LLM fallback** — chain multiple providers, auto-fallback on failure
+- **Structured logging** — JSON/human-readable formatters with log level control
 - **Per-source rate limiting** with health monitoring
-- **Success rate tracking** — analytics by source, score range, outcomes
+
+### Notifications & Scheduling
 - **High-match instant alerts** — Telegram/Slack notifications for 90%+ matches
+- **Daily email digests** — summary of pipeline activity
+- **Webhook integrations** — POST to any URL on events (applied, matched, etc.)
+- **Async scheduler** — cron-free recurring pipeline runs
+
+### Dashboard & Analytics
+- **Real-time dashboard** — Streamlit UI with WebSocket live updates
+- **Application timeline** — visual journey of each job (discovered → applied → outcome)
+- **Success rate tracking** — analytics by source, score range, outcomes
 - **Interview prep generator** — AI-generated Q&A for applied jobs
 - **CSV/JSON export** of all application data
-- **Browser automation** — Playwright fills forms with AI-guided field mapping
-- **Safety first** — `auto_submit=false` by default, screenshots for review
 
 ---
 
@@ -38,14 +61,15 @@ An **agentic AI system** that automatically searches for remote jobs, evaluates 
 │          │              │               │                               │
 │ Sources: │ AI scoring   │ AI generation │ Browser automation            │
 │ • RemoteOK│ + RAG context│ + cover letter│ + AI form mapping            │
-│ • Remotive│ + alerts    │ + RAG context │ + email applications          │
-│ • Rocketship│           │               │ + follow-up scheduling        │
+│ • Remotive│ + adaptive  │ + RAG context │ + email applications          │
+│ • Rocketship│ thresholds │              │ + follow-up scheduling        │
 ├──────────┴──────────────┴───────────────┴───────────────────────────────┤
 │                         SERVICES LAYER                                   │
-│  LLM (Ollama) │ RAG (ChromaDB) │ SQLite │ Browser │ Notifications      │
+│  LLM (Ollama)  │ RAG (ChromaDB) │ SQLite │ Browser │ Notifications     │
+│  Circuit Breaker│ Rate Limiter   │ Retry Q│ Scheduler│ Webhooks         │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                          CONTRACTS LAYER                                 │
-│  Interfaces │ Models │ Events │ Plugin Registry │ Error Handling        │
+│  Interfaces │ Models │ Events │ Plugin Registry │ Decorators            │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -56,17 +80,25 @@ An **agentic AI system** that automatically searches for remote jobs, evaluates 
 ```
 job-apply-agent/
 ├── packages/
-│   ├── contracts/          # Abstract interfaces, models, events
-│   ├── services/           # Infrastructure (LLM, DB, scrapers, notifications)
+│   ├── contracts/          # Abstract interfaces, models, events, decorators
+│   ├── services/           # Infrastructure (LLM, DB, scrapers, resilience)
+│   │   ├── sources/        # Job board scrapers (BaseJobSource pattern)
+│   │   ├── resilience/     # Circuit breaker, rate limiter, retry policy
+│   │   ├── observability/  # Structured logging
+│   │   ├── llm/            # LLM providers + fallback chain
+│   │   ├── stores/         # SQLite + RAG (ChromaDB)
+│   │   └── ...             # Scheduler, webhooks, digest, etc.
 │   ├── agents/             # AI agents + LangGraph workflow
+│   │   ├── llm_utils.py    # SafeLLMCaller (reusable LLM patterns)
+│   │   └── ...
 │   ├── server/             # FastAPI server (MCP + A2A + REST API)
 │   └── dashboard/          # Streamlit real-time UI
 ├── cli/                    # CLI commands
 ├── config/                 # Job source configuration
-├── tests/                  # Unit + integration tests (40 passing)
-├── data/vectordb/          # ChromaDB persistence
-├── pyproject.toml          # Workspace root
-└── docker-compose.yml      # Containerized deployment
+├── tests/                  # Unit + integration + contract tests (60 passing)
+├── start.py                # One command to start everything
+├── docker-compose.yml      # Containerized deployment
+└── pyproject.toml          # Workspace root
 ```
 
 ---
@@ -100,14 +132,21 @@ pip install -e .
 playwright install chromium
 ```
 
-### Run the Server
+### Run Everything (One Command)
 
 ```bash
-# Start FastAPI server (port 8000)
-python -m job_agent_server.main
+# Start both server + dashboard
+python start.py
+```
 
-# Start Streamlit dashboard (port 8501)
-streamlit run packages/dashboard/src/job_agent_dashboard/app.py
+This starts:
+- **FastAPI server** → http://localhost:8000
+- **Streamlit dashboard** → http://localhost:8501
+
+```bash
+# Or start individually
+python start.py --server-only
+python start.py --dashboard-only
 ```
 
 ### Docker
@@ -122,12 +161,21 @@ docker-compose up
 
 | Page | Description |
 |------|-------------|
-| 🔍 **Search Jobs** | Trigger job searches across all sources |
+| 📊 **Dashboard** | Overview metrics and status |
 | 🚀 **Run Pipeline** | Start full end-to-end pipeline with live status |
 | 📋 **Pipeline Results** | View matched jobs, scores, cover letters |
+| 🔍 **Search Jobs** | Trigger job searches across all sources |
+| 📋 **Review Queue** | Approve/reject matched jobs |
+| 📝 **Cover Letters** | View generated cover letters |
 | 🎯 **Interview Prep** | AI-generated questions for applied jobs |
 | 📈 **Analytics** | Success rates by source, score range, outcomes |
 | 🏥 **Source Health** | Rate limit usage, latency, errors per source |
+| 💪 **Profile Strength** | Skills vs market demand analysis |
+| 💰 **Salary Insights** | Market compensation ranges |
+| 📅 **Timeline** | Application journey visualization |
+| 🗺️ **Pipeline Graph** | Visual workflow graph |
+| 📡 **Live Status** | WebSocket real-time updates |
+| ⚙️ **Settings** | Configuration management |
 
 ---
 
@@ -142,7 +190,7 @@ docker-compose up
 | `GET` | `/status` | Full pipeline status |
 | `WS` | `/ws` | WebSocket live updates |
 
-### Jobs & Analytics
+### Jobs & Pipeline
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -152,15 +200,28 @@ docker-compose up
 | `GET` | `/analytics` | Success rate analytics |
 | `GET` | `/follow-ups` | Applications due for follow-up |
 | `POST` | `/interview-prep/{id}` | Generate interview questions |
+| `GET` | `/timeline` | Application journey timeline |
 
-### Export & Monitoring
+### Intelligence
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/export/csv` | Download all data as CSV |
-| `GET` | `/export/json` | Download all data as JSON |
+| `GET` | `/adaptive-thresholds` | Current adaptive scoring thresholds |
+| `GET` | `/profile/strength` | Profile strength vs market demand |
+| `GET` | `/salary-insights` | Market salary ranges |
+| `GET` | `/circuit-breakers` | Circuit breaker health status |
+
+### Infrastructure
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
 | `GET` | `/sources/health` | All sources rate limit status |
 | `GET` | `/sources/health/{name}` | Specific source health |
+| `GET` | `/retry-queue/stats` | Retry queue statistics |
+| `GET` | `/retry-queue/dead-letters` | Failed items (dead letter queue) |
+| `GET` | `/scheduler/status` | Scheduled task statuses |
+| `GET` | `/export/csv` | Download all data as CSV |
+| `GET` | `/export/json` | Download all data as JSON |
 
 ### Protocols
 
@@ -200,8 +261,13 @@ Add to your MCP client config:
 | **Event Bus** | Decoupled pub/sub communication between agents |
 | **RAG** | ChromaDB-powered context for AI decisions |
 | **Rate Limiting** | Per-source token bucket with health tracking |
+| **Circuit Breaker** | CLOSED/OPEN/HALF_OPEN states to prevent cascade failures |
 | **DI Container** | Single composition root wires all dependencies |
 | **Template Engine** | Jinja2 prompt templates separated from logic |
+| **BaseJobSource** | Shared error handling + item parsing for all scrapers |
+| **SafeLLMCaller** | Reusable LLM call wrappers with fallback patterns |
+| **@catch_and_log** | Decorator for consistent async error handling |
+| **Shared Fixtures** | Reusable test mocks eliminate duplication |
 
 ---
 
@@ -211,8 +277,14 @@ Add to your MCP client config:
 # Run all tests
 python -m pytest tests/ -v
 
-# Current: 40 tests passing
+# 60 tests passing (unit + integration + contract + e2e)
 ```
+
+Test coverage includes:
+- **Unit tests** — models, events, registry, tracing
+- **Integration tests** — source scrapers, notifications, graph compilation
+- **Contract tests** — API response format validation for all 3 job boards
+- **E2E tests** — deduplication, circuit breaker, retry policy, adaptive scoring
 
 ---
 
