@@ -4,6 +4,7 @@ import logging
 from typing import Any
 
 from job_agent_agents.base import BaseAgent
+from job_agent_agents.llm_utils import SafeLLMCaller
 from job_agent_contracts.events import EventType
 from job_agent_contracts.interfaces import LLMProvider
 from job_agent_contracts.models import (
@@ -32,7 +33,8 @@ class ProfileMatcherAgent(BaseAgent):
         self.search = search_config
         self.min_score = min_score
         self._app_config = app_config or ApplicationConfig(min_match_score=min_score)
-        self._notifier = notifier  # NotificationService or None
+        self._notifier = notifier
+        self._llm_caller = SafeLLMCaller(llm, self.logger)
 
     def _capabilities(self) -> list[str]:
         return ["profile_matching", "skill_analysis", "fit_scoring"]
@@ -64,17 +66,16 @@ class ProfileMatcherAgent(BaseAgent):
             rag_context=rag_context,
         )
 
-        # Validated LLM call
-        try:
-            llm_result = await self.llm.generate_validated(
-                prompt,
-                schema=MatchLLMResponse,
-                system="You are a job matching expert. Score dimensions 0.0-1.0. Be realistic and critical.",
-            )
-        except ValueError as e:
-            self.logger.error("LLM validation failed for %s: %s", job.id, e)
-            await self.db.update_status(job.id, JobStatus.FAILED, error=str(e))
-            return MatchResult(job_id=job.id, overall_score=0.0, reasoning=f"LLM error: {e}")
+        # Validated LLM call via reusable SafeLLMCaller
+        llm_result = await self._llm_caller.validated(
+            prompt,
+            MatchLLMResponse,
+            system="You are a job matching expert. Score dimensions 0.0-1.0. Be realistic and critical.",
+            context_label=job.id,
+        )
+        if llm_result is None:
+            await self.db.update_status(job.id, JobStatus.FAILED, error="LLM validation failed")
+            return MatchResult(job_id=job.id, overall_score=0.0, reasoning="LLM error")
 
         match = MatchResult(
             job_id=job.id,

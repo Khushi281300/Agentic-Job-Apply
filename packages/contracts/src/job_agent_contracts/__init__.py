@@ -23,6 +23,7 @@ from job_agent_contracts.models import (
     UserProfile,
 )
 from job_agent_contracts.events import EventBus, EventType
+from job_agent_contracts.decorators import catch_and_log
 
 __all__ = [
     "AgentProtocol",
@@ -39,4 +40,5 @@ __all__ = [
     "TailoredResume",
     "UserProfile",
     "VectorStore",
+    "catch_and_log",
 ]

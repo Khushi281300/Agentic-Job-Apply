@@ -9,9 +9,9 @@ import re
 from typing import Any
 from datetime import datetime
 
-from job_agent_contracts.interfaces import JobSource
 from job_agent_contracts.models import JobListing, JobSourceType
 from job_agent_services.automation.browser import PlaywrightBrowser
+from job_agent_services.sources.base_source import BaseJobSource
 from job_agent_services.sources.utils import rate_limited_request, location_matches
 
 logger = logging.getLogger(__name__)
@@ -37,7 +37,7 @@ _LOCATION_SUFFIXES = (
 )
 
 
-class RemoteRocketshipSource(JobSource):
+class RemoteRocketshipSource(BaseJobSource):
     """RemoteRocketship.com job source - Playwright scraper with browser reuse."""
 
     def __init__(self):
@@ -59,40 +59,38 @@ class RemoteRocketshipSource(JobSource):
             await self._browser.stop()
             self._browser = None
 
+    async def _do_search(self, title: str, location: str, **kwargs: Any) -> list[JobListing]:
+        """Scrape RemoteRocketship using Playwright."""
+        slug = title.lower().replace(" ", "-")
+        url = f"{BASE_URL}/jobs/{slug}"
+
+        async with rate_limited_request(self.name):
+            browser = await self._get_browser()
+            await browser.navigate(url)
+            html = await browser.get_page_content()
+
+        if not html:
+            logger.warning("RemoteRocketship: empty/blocked response for '%s'", title)
+            return []
+
+        jobs = self._parse_jobs(html, location)
+        logger.info("RemoteRocketship: found %d jobs for '%s'", len(jobs), title)
+        return jobs
+
     async def search(self, title: str, location: str, **kwargs: Any) -> list[JobListing]:
-        """Scrape RemoteRocketship for jobs matching title using Playwright."""
+        """Override base to reset browser on error."""
         try:
-            slug = title.lower().replace(" ", "-")
-            url = f"{BASE_URL}/jobs/{slug}"
-
-            async with rate_limited_request(self.name):
-                browser = await self._get_browser()
-                await browser.navigate(url)
-                html = await browser.get_page_content()
-
-            if not html:
-                logger.warning("RemoteRocketship: empty/blocked response for '%s'", title)
-                return []
-
-            jobs = self._parse_jobs(html, location)
-            logger.info("RemoteRocketship: found %d jobs for '%s'", len(jobs), title)
-            return jobs
-
+            return await self._do_search(title, location, **kwargs)
         except Exception as e:
-            logger.error("RemoteRocketship search failed: %s", e)
-            # Reset browser on error
+            logger.error("%s search failed: %s", self.name, e)
             await self.close()
             return []
 
-    async def fetch_details(self, url: str) -> str:
+    async def _do_fetch_details(self, url: str) -> str:
         """Fetch full job description from a RemoteRocketship job page."""
-        try:
-            browser = await self._get_browser()
-            await browser.navigate(url)
-            return await browser.get_page_content()
-        except Exception as e:
-            logger.error("RemoteRocketship fetch_details failed: %s", e)
-            return ""
+        browser = await self._get_browser()
+        await browser.navigate(url)
+        return await browser.get_page_content()
 
     def _parse_jobs(self, html: str, location_filter: str) -> list[JobListing]:
         """Parse job listings from the HTML page."""

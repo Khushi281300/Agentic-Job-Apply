@@ -39,19 +39,13 @@ class TestRemoteOKContract:
     ]
 
     @pytest.mark.asyncio
-    async def test_parses_valid_jobs(self):
+    async def test_parses_valid_jobs(self, mock_source_infra):
         """Parser extracts jobs from valid API response."""
         from job_agent_services.sources.remoteok import RemoteOKSource
 
         source = RemoteOKSource()
-        with patch("job_agent_services.sources.remoteok.http_client") as mock_http, \
-             patch("job_agent_services.sources.utils.source_rate_limiter") as mock_rl, \
-             patch("job_agent_services.sources.utils.circuit_registry") as mock_cr:
+        with patch("job_agent_services.sources.remoteok.http_client") as mock_http:
             mock_http.get_json = AsyncMock(return_value=self.SAMPLE_RESPONSE)
-            mock_rl.acquire = AsyncMock()
-            mock_rl.record_success = MagicMock()
-            mock_cr.get = MagicMock(return_value=MagicMock(is_available=True, record_success=MagicMock()))
-
             jobs = await source.search("python", "remote")
 
         assert len(jobs) == 2
@@ -60,38 +54,25 @@ class TestRemoteOKContract:
         assert jobs[0].id == "remoteok_123456"
 
     @pytest.mark.asyncio
-    async def test_skips_metadata_entries(self):
+    async def test_skips_metadata_entries(self, mock_source_infra):
         """First element (metadata) is correctly skipped."""
         from job_agent_services.sources.remoteok import RemoteOKSource
 
-        # Response with only metadata
         source = RemoteOKSource()
-        with patch("job_agent_services.sources.remoteok.http_client") as mock_http, \
-             patch("job_agent_services.sources.utils.source_rate_limiter") as mock_rl, \
-             patch("job_agent_services.sources.utils.circuit_registry") as mock_cr:
+        with patch("job_agent_services.sources.remoteok.http_client") as mock_http:
             mock_http.get_json = AsyncMock(return_value=[{"legal": "ok"}])
-            mock_rl.acquire = AsyncMock()
-            mock_rl.record_success = MagicMock()
-            mock_cr.get = MagicMock(return_value=MagicMock(is_available=True, record_success=MagicMock()))
-
             jobs = await source.search("python", "remote")
 
         assert len(jobs) == 0
 
     @pytest.mark.asyncio
-    async def test_salary_parsing(self):
+    async def test_salary_parsing(self, mock_source_infra):
         """Salary fields are correctly parsed."""
         from job_agent_services.sources.remoteok import RemoteOKSource
 
         source = RemoteOKSource()
-        with patch("job_agent_services.sources.remoteok.http_client") as mock_http, \
-             patch("job_agent_services.sources.utils.source_rate_limiter") as mock_rl, \
-             patch("job_agent_services.sources.utils.circuit_registry") as mock_cr:
+        with patch("job_agent_services.sources.remoteok.http_client") as mock_http:
             mock_http.get_json = AsyncMock(return_value=self.SAMPLE_RESPONSE)
-            mock_rl.acquire = AsyncMock()
-            mock_rl.record_success = MagicMock()
-            mock_cr.get = MagicMock(return_value=MagicMock(is_available=True, record_success=MagicMock()))
-
             jobs = await source.search("python", "remote")
 
         assert jobs[0].salary_min == 80000
@@ -125,19 +106,13 @@ class TestRemotiveContract:
     }
 
     @pytest.mark.asyncio
-    async def test_parses_valid_response(self):
+    async def test_parses_valid_response(self, mock_source_infra):
         """Parser correctly extracts jobs from Remotive API format."""
         from job_agent_services.sources.remotive import RemotiveSource
 
         source = RemotiveSource()
-        with patch("job_agent_services.sources.remotive.http_client") as mock_http, \
-             patch("job_agent_services.sources.utils.source_rate_limiter") as mock_rl, \
-             patch("job_agent_services.sources.utils.circuit_registry") as mock_cr:
+        with patch("job_agent_services.sources.remotive.http_client") as mock_http:
             mock_http.get_json = AsyncMock(return_value=self.SAMPLE_RESPONSE)
-            mock_rl.acquire = AsyncMock()
-            mock_rl.record_success = MagicMock()
-            mock_cr.get = MagicMock(return_value=MagicMock(is_available=True, record_success=MagicMock()))
-
             jobs = await source.search("devops", "remote")
 
         assert len(jobs) == 2
@@ -146,19 +121,13 @@ class TestRemotiveContract:
         assert jobs[0].id == "remotive_11111"
 
     @pytest.mark.asyncio
-    async def test_location_filtering(self):
+    async def test_location_filtering(self, mock_source_infra):
         """Jobs are filtered by location correctly."""
         from job_agent_services.sources.remotive import RemotiveSource
 
         source = RemotiveSource()
-        with patch("job_agent_services.sources.remotive.http_client") as mock_http, \
-             patch("job_agent_services.sources.utils.source_rate_limiter") as mock_rl, \
-             patch("job_agent_services.sources.utils.circuit_registry") as mock_cr:
+        with patch("job_agent_services.sources.remotive.http_client") as mock_http:
             mock_http.get_json = AsyncMock(return_value=self.SAMPLE_RESPONSE)
-            mock_rl.acquire = AsyncMock()
-            mock_rl.record_success = MagicMock()
-            mock_cr.get = MagicMock(return_value=MagicMock(is_available=True, record_success=MagicMock()))
-
             jobs = await source.search("devops", "europe")
 
         # Only the Europe job should match
@@ -166,19 +135,13 @@ class TestRemotiveContract:
         assert jobs[0].title == "React Developer"
 
     @pytest.mark.asyncio
-    async def test_handles_empty_response(self):
+    async def test_handles_empty_response(self, mock_source_infra):
         """Empty/unexpected response returns empty list."""
         from job_agent_services.sources.remotive import RemotiveSource
 
         source = RemotiveSource()
-        with patch("job_agent_services.sources.remotive.http_client") as mock_http, \
-             patch("job_agent_services.sources.utils.source_rate_limiter") as mock_rl, \
-             patch("job_agent_services.sources.utils.circuit_registry") as mock_cr:
+        with patch("job_agent_services.sources.remotive.http_client") as mock_http:
             mock_http.get_json = AsyncMock(return_value={"something": "else"})
-            mock_rl.acquire = AsyncMock()
-            mock_rl.record_success = MagicMock()
-            mock_cr.get = MagicMock(return_value=MagicMock(is_available=True, record_success=MagicMock()))
-
             jobs = await source.search("devops", "remote")
 
         assert len(jobs) == 0

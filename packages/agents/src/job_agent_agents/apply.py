@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from job_agent_agents.base import BaseAgent
+from job_agent_agents.llm_utils import SafeLLMCaller
 from job_agent_contracts.events import EventType
 from job_agent_contracts.interfaces import LLMProvider
 from job_agent_contracts.models import (
@@ -34,7 +35,8 @@ class ApplicationAgent(BaseAgent):
         self.user = user_profile or UserProfile()
         self._config = app_config or ApplicationConfig()
         self.resume_path = resume_path or self.user.resume_path
-        self._email_applicant = email_applicant  # EmailApplicantService or None
+        self._email_applicant = email_applicant
+        self._llm_caller = SafeLLMCaller(llm, self.logger)
 
     def _capabilities(self) -> list[str]:
         return ["form_filling", "browser_automation", "email_application", "application_submission"]
@@ -208,10 +210,12 @@ class ApplicationAgent(BaseAgent):
                         form_html=form_html,
                         cover_letter_excerpt=cover_excerpt)
 
-        try:
-            result = await self.llm.generate_validated(prompt, schema=FormMappingResponse)
+        # Try validated response first, fall back to raw JSON
+        result = await self._llm_caller.validated(
+            prompt, FormMappingResponse, context_label="form_mapping"
+        )
+        if result is not None:
             return result.field_mappings
-        except ValueError as e:
-            self.logger.warning("Form mapping validation failed, using raw: %s", e)
-            raw = await self.llm.generate_json(prompt)
-            return {k: str(v) for k, v in raw.items() if isinstance(k, str) and isinstance(v, str)}
+
+        raw = await self._llm_caller.json(prompt, context_label="form_mapping_fallback")
+        return {k: str(v) for k, v in raw.items() if isinstance(k, str) and isinstance(v, str)}

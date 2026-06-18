@@ -69,6 +69,33 @@ class Database:
                 await conn.run_sync(Base.metadata.create_all)
             self._initialized = True
 
+    # ─── Reusable Record Update Helper ───────────────────────────────────────
+
+    async def _update_record(
+        self,
+        job_id: str,
+        updater: Any,
+    ) -> bool:
+        """Generic record update — loads record, applies updater, commits.
+
+        Args:
+            job_id: Primary key of the record.
+            updater: Callable that receives the JobRecord and mutates it.
+
+        Returns:
+            True if the record existed and was updated, False otherwise.
+        """
+        await self.initialize()
+        async with self._session_factory() as session:
+            record = await session.get(JobRecord, job_id)
+            if record:
+                updater(record)
+                await session.commit()
+                return True
+            return False
+
+    # ─── Public Methods ──────────────────────────────────────────────────────
+
     async def save_job(self, job: JobListing, status: JobStatus = JobStatus.DISCOVERED) -> None:
         """Save or update a job listing (upsert via merge)."""
         await self.initialize()
@@ -88,35 +115,24 @@ class Database:
             await session.commit()
 
     async def update_match(self, job_id: str, match: MatchResult) -> None:
-        await self.initialize()
-        async with self._session_factory() as session:
-            record = await session.get(JobRecord, job_id)
-            if record:
-                record.match_score = match.overall_score
-                record.match_data = match.model_dump_json()
-                record.status = JobStatus.MATCHED.value
-                await session.commit()
+        def _apply(record: JobRecord) -> None:
+            record.match_score = match.overall_score
+            record.match_data = match.model_dump_json()
+            record.status = JobStatus.MATCHED.value
+        await self._update_record(job_id, _apply)
 
     async def update_status(self, job_id: str, status: JobStatus, error: str = "") -> None:
-        await self.initialize()
-        async with self._session_factory() as session:
-            record = await session.get(JobRecord, job_id)
-            if record:
-                record.status = status.value
-                if error:
-                    record.error = error
-                if status == JobStatus.APPLIED:
-                    record.applied_at = datetime.now()
-                await session.commit()
+        def _apply(record: JobRecord) -> None:
+            record.status = status.value
+            if error:
+                record.error = error
+            if status == JobStatus.APPLIED:
+                record.applied_at = datetime.now()
+        await self._update_record(job_id, _apply)
 
     async def update_application_status(self, job_id: str, status: str) -> None:
         """Update application status by string (used by outcome tracker)."""
-        await self.initialize()
-        async with self._session_factory() as session:
-            record = await session.get(JobRecord, job_id)
-            if record:
-                record.status = status
-                await session.commit()
+        await self._update_record(job_id, lambda r: setattr(r, "status", status))
 
     async def get_application(self, job_id: str) -> dict[str, Any] | None:
         """Get a single application record."""
@@ -223,22 +239,14 @@ class Database:
 
     async def record_outcome(self, job_id: str, outcome: str) -> None:
         """Record application outcome: callback, interview, offer, rejected, no_response."""
-        await self.initialize()
-        async with self._session_factory() as session:
-            record = await session.get(JobRecord, job_id)
-            if record:
-                record.outcome = outcome
-                record.outcome_at = datetime.now()
-                await session.commit()
+        def _apply(record: JobRecord) -> None:
+            record.outcome = outcome
+            record.outcome_at = datetime.now()
+        await self._update_record(job_id, _apply)
 
     async def set_follow_up(self, job_id: str, follow_up_at: datetime) -> None:
         """Schedule a follow-up reminder for a job."""
-        await self.initialize()
-        async with self._session_factory() as session:
-            record = await session.get(JobRecord, job_id)
-            if record:
-                record.follow_up_at = follow_up_at
-                await session.commit()
+        await self._update_record(job_id, lambda r: setattr(r, "follow_up_at", follow_up_at))
 
     async def get_due_follow_ups(self) -> list[dict]:
         """Get applications due for follow-up."""
