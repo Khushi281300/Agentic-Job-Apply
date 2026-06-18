@@ -106,6 +106,426 @@ sources:
       link: "[data-test='job-title']"
       description: ".JobDetails_jobDescription__uW_fK"
 
+  # ─── India & Gulf ──────────────────────────────────────────────────────────
+
+  - name: naukri
+    type: html_scrape
+    enabled: true
+    base_url: https://www.naukri.com
+    search_url: https://www.naukri.com/{title}-jobs?k={title}&l={location}&experience=&nignbevent_src=jobsearchDeskGNB
+    rate_limit: 5
+    headers:
+      Accept: text/html
+      User-Agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    selectors:
+      job_card: ".srp-jobtuple-wrapper"
+      title: ".title"
+      company: ".comp-name"
+      location: ".locWdth"
+      link: ".title"
+      description: ".job-desc"
+      salary: ".sal-wrap .ni-salary"
+      experience: ".expwdth"
+
+  - name: naukrigulf
+    type: html_scrape
+    enabled: true
+    base_url: https://www.naukrigulf.com
+    search_url: https://www.naukrigulf.com/{title}-jobs?k={title}&l={location}
+    rate_limit: 5
+    headers:
+      Accept: text/html
+      User-Agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    selectors:
+      job_card: ".srp-tuple"
+      title: ".desig"
+      company: ".comp-name"
+      location: ".loc"
+      link: ".desig a"
+      description: ".job-description"
+      salary: ".salary"
+
+  # ─── Visa Sponsorship Friendly Sites ───────────────────────────────────────
+
+  - name: relocate_me
+    type: html_scrape
+    enabled: true
+    base_url: https://relocate.me
+    search_url: https://relocate.me/search?query={title}&location={location}
+    rate_limit: 8
+    headers:
+      Accept: text/html
+    selectors:
+      job_card: ".job-card"
+      title: ".job-card__title"
+      company: ".job-card__company"
+      location: ".job-card__location"
+      link: ".job-card__title a"
+      description: ".job-description"
+    notes: "All jobs include relocation/visa sponsorship"
+
+  - name: visa_sponsored_jobs
+    type: html_scrape
+    enabled: true
+    base_url: https://visasponsoredjobs.com
+    search_url: https://visasponsoredjobs.com/search?q={title}&l={location}
+    rate_limit: 6
+    headers:
+      Accept: text/html
+    selectors:
+      job_card: ".job-listing"
+      title: ".job-title"
+      company: ".company-name"
+      location: ".job-location"
+      link: ".job-title a"
+      description: ".job-description"
+    notes: "Dedicated to visa-sponsored positions worldwide"
+
+  - name: uk_sponsorship_jobs
+    type: html_scrape
+    enabled: true
+    base_url: https://uksponsorship.com
+    search_url: https://uksponsorship.com/jobs?q={title}
+    rate_limit: 6
+    headers:
+      Accept: text/html
+    selectors:
+      job_card: ".job-card"
+      title: ".job-title"
+      company: ".company"
+      location: ".location"
+      link: ".job-title a"
+      description: ".description"
+    notes: "UK Skilled Worker visa sponsor companies"
+
+  - name: arbeitnow
+    type: api_json
+    enabled: true
+    base_url: https://www.arbeitnow.com
+    search_url: https://www.arbeitnow.com/api/job-board-api?search={title}&location={location}&visa_sponsorship=true
+    rate_limit: 10
+    headers:
+      Accept: application/json
+    json_mapping:
+      title: title
+      company: company_name
+      location: location
+      url: url
+      description: description
+      tags: tags
+      id_field: slug
+      id_prefix: "arbeitnow_"
+    notes: "Free API, has visa_sponsorship filter built-in"
+
+  - name: landing_jobs
+    type: html_scrape
+    enabled: true
+    base_url: https://landing.jobs
+    search_url: https://landing.jobs/jobs?query={title}&location={location}&visa=true
+    rate_limit: 6
+    headers:
+      Accept: text/html
+    selectors:
+      job_card: ".job-card"
+      title: ".job-card__title"
+      company: ".job-card__company"
+      location: ".job-card__location"
+      link: ".job-card__title a"
+      description: ".job-description"
+    notes: "European tech jobs, many with relocation support"
+
+  - name: stackoverflow_jobs
+    type: html_scrape
+    enabled: true
+    base_url: https://stackoverflow.com
+    search_url: https://stackoverflow.com/jobs?q={title}&l={location}&v=true
+    rate_limit: 5
+    headers:
+      Accept: text/html
+    selectors:
+      job_card: ".js-result"
+      title: ".s-link"
+      company: ".fc-black-700"
+      location: ".fc-black-500"
+      link: ".s-link"
+      description: ".job-description"
+    notes: "v=true filters for visa sponsorship"
+
+  - name: eucareers
+    type: html_scrape
+    enabled: true
+    base_url: https://epso.europa.eu
+    search_url: https://epso.europa.eu/job-opportunities/find-job-opportunity_en?keyword={title}
+    rate_limit: 5
+    headers:
+      Accept: text/html
+    selectors:
+      job_card: ".views-row"
+      title: ".views-field-title a"
+      company: ".views-field-field-institution"
+      location: ".views-field-field-place-of-employment"
+      link: ".views-field-title a"
+      description: ".field-name-body"
+    notes: "EU institutions — built-in work permit for all nationalities"
+
+  - name: adzuna
+    type: api_json
+    enabled: true
+    base_url: https://api.adzuna.com
+    search_url: https://api.adzuna.com/v1/api/jobs/gb/search/1?what={title}&where={location}&content-type=application/json
+    rate_limit: 8
+    headers:
+      Accept: application/json
+    json_mapping:
+      title: title
+      company: company.display_name
+      location: location.display_name
+      url: redirect_url
+      description: description
+      salary: salary_min
+      id_field: id
+      id_prefix: "adzuna_"
+    notes: "Multi-country API (gb/us/au/de/in etc), needs app_id & app_key"
+
+  - name: jobbatical
+    type: html_scrape
+    enabled: true
+    base_url: https://jobbatical.com
+    search_url: https://jobbatical.com/jobs?q={title}&location={location}
+    rate_limit: 6
+    headers:
+      Accept: text/html
+    selectors:
+      job_card: ".job-card"
+      title: ".job-card__title"
+      company: ".job-card__company"
+      location: ".job-card__location"
+      link: ".job-card__title a"
+      description: ".job-description"
+    notes: "Focused on international relocation & visa sponsorship"
+
+  - name: hired
+    type: html_scrape
+    enabled: true
+    base_url: https://hired.com
+    search_url: https://hired.com/job-listings?q={title}&loc={location}
+    rate_limit: 5
+    headers:
+      Accept: text/html
+    selectors:
+      job_card: ".job-card"
+      title: ".job-title"
+      company: ".company-name"
+      location: ".location"
+      link: ".job-title a"
+      description: ".job-details"
+    notes: "Tech-focused, many companies sponsor visas"
+
+  - name: talent_io
+    type: html_scrape
+    enabled: true
+    base_url: https://www.talent.io
+    search_url: https://www.talent.io/jobs?q={title}&location={location}
+    rate_limit: 5
+    headers:
+      Accept: text/html
+    selectors:
+      job_card: ".job-card"
+      title: ".job-card-title"
+      company: ".job-card-company"
+      location: ".job-card-location"
+      link: ".job-card-title a"
+      description: ".job-description"
+    notes: "European tech marketplace with relocation support"
+
+  - name: toptal
+    type: html_scrape
+    enabled: true
+    base_url: https://www.toptal.com
+    search_url: https://www.toptal.com/careers?q={title}
+    rate_limit: 4
+    headers:
+      Accept: text/html
+    selectors:
+      job_card: ".job-listing"
+      title: ".job-listing__title"
+      company: ".job-listing__company"
+      location: ".job-listing__location"
+      link: ".job-listing__title a"
+      description: ".job-listing__description"
+    notes: "Global remote positions, sponsors visas for full-time roles"
+
+  - name: turing
+    type: html_scrape
+    enabled: true
+    base_url: https://www.turing.com
+    search_url: https://www.turing.com/remote-developer-jobs?q={title}
+    rate_limit: 6
+    headers:
+      Accept: text/html
+    selectors:
+      job_card: ".job-card"
+      title: ".job-title"
+      company: ".company-name"
+      location: ".location"
+      link: ".job-title a"
+      description: ".job-description"
+    notes: "US remote jobs for global developers, handles visa/legal"
+
+  - name: swissdevjobs
+    type: html_scrape
+    enabled: true
+    base_url: https://swissdevjobs.ch
+    search_url: https://swissdevjobs.ch/jobs?q={title}&visa=true
+    rate_limit: 6
+    headers:
+      Accept: text/html
+    selectors:
+      job_card: ".job-item"
+      title: ".job-title"
+      company: ".company-name"
+      location: ".location"
+      link: ".job-title a"
+      description: ".job-description"
+    notes: "Swiss tech jobs, visa filter available"
+
+  - name: japan_dev
+    type: html_scrape
+    enabled: true
+    base_url: https://japan-dev.com
+    search_url: https://japan-dev.com/jobs?search={title}&visa=true
+    rate_limit: 8
+    headers:
+      Accept: text/html
+    selectors:
+      job_card: ".job-card"
+      title: ".job-title"
+      company: ".company"
+      location: ".location"
+      link: ".job-title a"
+      description: ".job-description"
+    notes: "Japan tech jobs — most offer visa sponsorship"
+
+  - name: germantechjobs
+    type: html_scrape
+    enabled: true
+    base_url: https://germantechjobs.de
+    search_url: https://germantechjobs.de/jobs?q={title}&visa=true
+    rate_limit: 6
+    headers:
+      Accept: text/html
+    selectors:
+      job_card: ".job-card"
+      title: ".job-title"
+      company: ".company-name"
+      location: ".location"
+      link: ".job-title a"
+      description: ".job-description"
+    notes: "German tech jobs with visa sponsorship filter"
+
+  - name: wellfound
+    type: html_scrape
+    enabled: true
+    base_url: https://wellfound.com
+    search_url: https://wellfound.com/jobs?q={title}&l={location}&visa=true
+    rate_limit: 5
+    headers:
+      Accept: text/html
+    selectors:
+      job_card: ".styles_result__rPRNG"
+      title: ".styles_title__xpQDw"
+      company: ".styles_company__N5xGk"
+      location: ".styles_location__AZzag"
+      link: ".styles_title__xpQDw a"
+      description: ".styles_description__BMgCj"
+    notes: "AngelList/Wellfound — startup jobs, many sponsor visas"
+
+  - name: bayt
+    type: html_scrape
+    enabled: true
+    base_url: https://www.bayt.com
+    search_url: https://www.bayt.com/en/jobs/?keyword={title}&location={location}
+    rate_limit: 5
+    headers:
+      Accept: text/html
+      User-Agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    selectors:
+      job_card: ".has-pointer-d"
+      title: "h2.m0"
+      company: ".t-default"
+      location: ".t-mute"
+      link: "h2.m0 a"
+      description: ".job-description"
+    notes: "Largest Middle East job portal, most Gulf jobs include visa"
+
+  - name: dubizzle_jobs
+    type: html_scrape
+    enabled: true
+    base_url: https://dubai.dubizzle.com
+    search_url: https://dubai.dubizzle.com/jobs/?keyword={title}
+    rate_limit: 5
+    headers:
+      Accept: text/html
+    selectors:
+      job_card: ".listing-card"
+      title: ".listing-card__title"
+      company: ".listing-card__company"
+      location: ".listing-card__location"
+      link: ".listing-card__title a"
+      description: ".listing-description"
+    notes: "UAE/Dubai jobs — employers typically sponsor visas"
+
+  - name: eures
+    type: html_scrape
+    enabled: true
+    base_url: https://eures.europa.eu
+    search_url: https://eures.europa.eu/eures-services/european-job-days/online-events_en?keyword={title}&location={location}
+    rate_limit: 5
+    headers:
+      Accept: text/html
+    selectors:
+      job_card: ".views-row"
+      title: ".views-field-title a"
+      company: ".views-field-field-employer"
+      location: ".views-field-field-location"
+      link: ".views-field-title a"
+      description: ".field-name-body"
+    notes: "EU job mobility portal — free movement + visa support info"
+
+  - name: canadavisa_jobs
+    type: html_scrape
+    enabled: true
+    base_url: https://www.canadavisa.com
+    search_url: https://www.canadavisa.com/immigration-jobs.html?q={title}
+    rate_limit: 5
+    headers:
+      Accept: text/html
+    selectors:
+      job_card: ".job-listing"
+      title: ".job-title"
+      company: ".company"
+      location: ".location"
+      link: ".job-title a"
+      description: ".job-description"
+    notes: "Canadian jobs with LMIA/work permit sponsorship"
+
+  - name: seek_au
+    type: html_scrape
+    enabled: true
+    base_url: https://www.seek.com.au
+    search_url: https://www.seek.com.au/{title}-jobs?where={location}
+    rate_limit: 5
+    headers:
+      Accept: text/html
+    selectors:
+      job_card: "[data-testid='job-card']"
+      title: "[data-testid='job-title']"
+      company: "[data-testid='company-name']"
+      location: "[data-testid='job-location']"
+      link: "[data-testid='job-title'] a"
+      description: ".job-description"
+    notes: "Australia's largest job board — filter for visa sponsorship"
+
   # ─── Example: Adding a new source ─────────────────────────────────────────
   # Just copy this template and fill in the details:
   #
