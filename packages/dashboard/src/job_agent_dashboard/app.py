@@ -24,6 +24,16 @@ def get_api(endpoint: str):
         return {"error": str(e)}
 
 
+def get_api_live(endpoint: str):
+    """Uncached API call for live-updating pages."""
+    try:
+        resp = httpx.get(f"{AGENT_API_URL}{endpoint}", timeout=10)
+        resp.raise_for_status()
+        return resp.json()
+    except Exception as e:
+        return {"error": str(e)}
+
+
 def post_api(endpoint: str, data: dict = {}):
     try:
         resp = httpx.post(f"{AGENT_API_URL}{endpoint}", json=data, timeout=30)
@@ -31,6 +41,58 @@ def post_api(endpoint: str, data: dict = {}):
         return resp.json()
     except Exception as e:
         return {"error": str(e)}
+
+
+def _format_activity_message(node: str, direction: str, data: dict) -> str:
+    """Turn raw node I/O records into human-readable messages."""
+    if direction == "error":
+        return f"**{node.title()}** failed — {data}" if isinstance(data, str) else f"**{node.title()}** encountered an error"
+
+    if node == "search":
+        if direction == "input":
+            return "🔍 **Started searching** for jobs across all configured sources…"
+        count = data.get("job_count", 0)
+        return f"🔍 **Search complete** — found **{count} job{'s' if count != 1 else ''}** from remote boards"
+
+    if node == "fetch_details":
+        if direction == "input":
+            return "📄 **Fetching full job descriptions** for each discovered listing…"
+        return "📄 **Job details enriched** — descriptions, requirements & salary data loaded"
+
+    if node == "match":
+        if direction == "input":
+            return "📊 **Started matching** jobs against your profile & resume…"
+        matched = data.get("matched", 0)
+        rejected = data.get("rejected", 0)
+        total = matched + rejected
+        return f"📊 **Matching complete** — **{matched}/{total}** jobs passed the score threshold ({rejected} rejected)"
+
+    if node == "tailor":
+        if direction == "input":
+            return "📝 **Tailoring resumes** for each matched position…"
+        return "📝 **Tailoring done** — custom resumes & cover letters generated for each match"
+
+    if node == "human_review":
+        if direction == "input":
+            return "👀 **Waiting for your review** — check the Review Queue to approve/reject applications"
+        return "👀 **Review completed** — approved applications moving to apply step"
+
+    if node == "apply":
+        if direction == "input":
+            return "🚀 **Submitting applications** to company career portals…"
+        applied = data.get("applied", 0)
+        failed = data.get("failed", 0)
+        if failed:
+            return f"🚀 **Applications submitted** — **{applied} succeeded**, {failed} failed"
+        return f"🚀 **Applications submitted** — **{applied}** application{'s' if applied != 1 else ''} sent successfully!"
+
+    if node == "email":
+        if direction == "input":
+            return "📧 **Sending application emails** with tailored cover letters…"
+        return "📧 **Emails sent** — cover letters delivered to hiring contacts"
+
+    # Fallback for unknown nodes
+    return f"⚙️ **{node.title()}** — {direction}"
 
 
 # ─── Sidebar ─────────────────────────────────────────────────────────────────
@@ -475,7 +537,7 @@ elif page == "📡 Live Status":
     # Auto-refresh toggle
     auto_refresh = st.toggle("🔄 Auto-refresh (every 3s)", value=True)
 
-    status_data = get_api("/status")
+    status_data = get_api_live("/status")
     if "error" in status_data:
         st.error(f"Cannot fetch status: {status_data['error']}")
     else:
@@ -484,15 +546,14 @@ elif page == "📡 Live Status":
         # ── Step Progress Bar ──
         phase = pipeline.get("phase", "idle")
         steps = ["idle", "searching", "matching", "tailoring", "applying", "completed"]
-        step_labels = ["🔘 Idle", "🔍 Searching", "📊 Matching", "📝 Tailoring", "🚀 Applying", "✅ Done"]
 
         current_idx = steps.index(phase) if phase in steps else 0
         if phase == "failed":
-            current_idx = -1  # special handling
+            current_idx = -1
 
         st.markdown("### Pipeline Progress")
         cols = st.columns(len(steps))
-        for i, (step, label) in enumerate(zip(steps, step_labels)):
+        for i, step in enumerate(steps):
             with cols[i]:
                 if phase == "failed":
                     st.markdown(f"<div style='text-align:center;color:red'>❌<br><small>{step.title()}</small></div>", unsafe_allow_html=True)
@@ -503,7 +564,6 @@ elif page == "📡 Live Status":
                 else:
                     st.markdown(f"<div style='text-align:center;color:gray'>⬜<br><small>{step.title()}</small></div>", unsafe_allow_html=True)
 
-        # Progress bar
         if phase == "completed":
             st.progress(1.0, text="Pipeline completed!")
         elif phase == "failed":
@@ -529,43 +589,42 @@ elif page == "📡 Live Status":
 
         st.divider()
 
-        # ── Live Activity Feed ──
-        st.subheader("📜 Live Activity Feed")
+        # ── Detailed Step-by-Step Log ──
+        st.subheader("📜 Step-by-Step Activity Log")
+
         records = status_data.get("recent_io", [])
         if records:
-            for r in reversed(records[-20:]):
-                direction_icon = {"input": "➡️", "output": "⬅️", "error": "🔴"}.get(r["direction"], "•")
-                duration_str = f" ({r['duration_ms']:.0f}ms)" if r.get("duration_ms") else ""
-                node = r.get("node", "?")
-                ts = r.get("timestamp", "")
+            for r in reversed(records[-30:]):
+                node = r.get("node", "")
+                direction = r.get("direction", "")
+                data = r.get("data", {})
+                ts = r.get("timestamp", "")[11:19]
+                duration = r.get("duration_ms", 0)
+                duration_str = f" `{duration:.0f}ms`" if duration else ""
 
-                # Color-coded by node
-                node_colors = {
-                    "search": "🔍", "match": "📊", "tailor": "📝",
-                    "apply": "🚀", "email": "📧",
-                }
-                node_icon = node_colors.get(node, "⚙️")
+                # Build a human-readable message from the raw data
+                msg = _format_activity_message(node, direction, data)
 
-                with st.expander(
-                    f"{direction_icon} [{ts[11:19]}] {node_icon} **{node}** {r['direction']}{duration_str}",
-                    expanded=False,
-                ):
-                    st.json(r["data"])
+                # Pick icon based on direction + node
+                if direction == "error":
+                    st.error(f"🔴 `{ts}` {msg}{duration_str}")
+                elif direction == "output":
+                    st.success(f"✅ `{ts}` {msg}{duration_str}")
+                else:
+                    st.info(f"▶️ `{ts}` {msg}")
         else:
-            st.info("No activity recorded yet. Start the pipeline from **🚀 Run Pipeline**.")
+            st.info("No activity yet. Start the pipeline from **🚀 Run Pipeline**.")
 
         st.divider()
 
         # ── Errors ──
-        st.subheader("🔴 Errors")
         errors = status_data.get("errors", [])
         if errors:
+            st.subheader("🔴 Errors")
             for err in reversed(errors):
-                st.error(f"[{err['timestamp'][11:19]}] **{err['node']}**: {err['data']}")
-        else:
-            st.success("No errors.")
+                st.error(f"`{err['timestamp'][11:19]}` **{err['node']}** — {err['data']}")
 
-    # Auto-refresh via st.rerun
+    # Auto-refresh
     if auto_refresh:
         time.sleep(3)
         st.rerun()

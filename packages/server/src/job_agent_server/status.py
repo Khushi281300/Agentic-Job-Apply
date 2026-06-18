@@ -102,18 +102,49 @@ class StatusTracker:
         ))
         self._status.last_activity = datetime.now().isoformat()
 
+        # Auto-advance phase based on which node starts
+        _phase_map = {
+            "search": PipelinePhase.SEARCHING,
+            "fetch_details": PipelinePhase.SEARCHING,
+            "match": PipelinePhase.MATCHING,
+            "tailor": PipelinePhase.TAILORING,
+            "apply": PipelinePhase.APPLYING,
+            "email": PipelinePhase.EMAILING,
+        }
+        if node in _phase_map:
+            self._status.phase = _phase_map[node]
+            if self._status.started_at is None:
+                self._status.started_at = self._status.last_activity
+
     def record_output(self, node: str, data: Any) -> None:
         duration = 0.0
         if node in self._start_times:
             duration = (time.time() - self._start_times.pop(node)) * 1000
+
+        safe_data = _safe_serialize(data)
         self._io_log.append(IORecord(
             timestamp=datetime.now().isoformat(),
             node=node,
             direction="output",
-            data=_safe_serialize(data),
+            data=safe_data,
             duration_ms=round(duration, 1),
         ))
         self._status.last_activity = datetime.now().isoformat()
+
+        # Auto-update stats from node output summaries
+        if isinstance(safe_data, dict):
+            if node == "search":
+                count = safe_data.get("job_count", 0)
+                if count:
+                    self._status.stats["searched"] = count
+            elif node == "match":
+                matched = safe_data.get("matched", 0)
+                if matched:
+                    self._status.stats["matched"] = matched
+            elif node == "apply":
+                applied = safe_data.get("applied", 0)
+                if applied:
+                    self._status.stats["applied"] = applied
 
     def record_error(self, node: str, error: str | Exception) -> None:
         record = IORecord(
