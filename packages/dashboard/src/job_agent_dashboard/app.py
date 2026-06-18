@@ -10,8 +10,10 @@ from job_agent_dashboard.pages import (
     analytics,
     cover_letters,
     dashboard,
+    deadlines,
     interview_prep,
     live_status,
+    match_config,
     pipeline_graph,
     pipeline_results,
     profile_strength,
@@ -43,8 +45,10 @@ PAGES = {
     "💪 Profile Strength": profile_strength,
     "💰 Salary Insights": salary_insights,
     "📅 Timeline": timeline,
+    "⏰ Deadlines": deadlines,
     "🗺️ Pipeline Graph": pipeline_graph,
     "📡 Live Status": live_status,
+    "🎛️ Match Config": match_config,
     "⚙️ Settings": settings,
 }
 

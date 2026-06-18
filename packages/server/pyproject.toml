@@ -12,6 +12,8 @@ dependencies = [
     "uvicorn>=0.27.0",
     # MCP Protocol
     "mcp>=1.0.0",
+    # PDF export
+    "fpdf2>=2.7.0",
 ]
 
 [project.scripts]

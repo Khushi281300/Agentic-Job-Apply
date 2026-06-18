@@ -41,6 +41,8 @@ class JobRecord(Base):
     outcome = Column(String, default="")          # callback, interview, offer, rejected, no_response
     outcome_at = Column(DateTime, nullable=True)
     follow_up_at = Column(DateTime, nullable=True)
+    # Application deadline tracking
+    deadline = Column(DateTime, nullable=True)
 
     __table_args__ = (
         Index("ix_jobs_url", "url"),
@@ -49,6 +51,7 @@ class JobRecord(Base):
         Index("ix_jobs_discovered_at", "discovered_at"),
         Index("ix_jobs_status_score", "status", "match_score"),
         Index("ix_jobs_outcome", "outcome"),
+        Index("ix_jobs_deadline", "deadline"),
     )
 
 
@@ -264,6 +267,64 @@ class Database:
                 {"id": r.id, "title": r.title, "company": r.company,
                  "applied_at": r.applied_at.isoformat() if r.applied_at else "",
                  "follow_up_at": r.follow_up_at.isoformat() if r.follow_up_at else ""}
+                for r in records
+            ]
+
+    # ─── Deadline Tracking ───────────────────────────────────────────────────
+
+    async def set_deadline(self, job_id: str, deadline: datetime) -> bool:
+        """Set an application deadline for a job."""
+        return await self._update_record(job_id, lambda r: setattr(r, "deadline", deadline))
+
+    async def get_upcoming_deadlines(self, days: int = 14) -> list[dict]:
+        """Get jobs with deadlines in the next N days."""
+        await self.initialize()
+        async with self._session_factory() as session:
+            now = datetime.now()
+            cutoff = now + timedelta(days=days)
+            result = await session.execute(
+                select(JobRecord)
+                .where(JobRecord.deadline.isnot(None))
+                .where(JobRecord.deadline >= now)
+                .where(JobRecord.deadline <= cutoff)
+                .where(JobRecord.status.notin_([
+                    JobStatus.APPLIED.value, JobStatus.REJECTED.value,
+                ]))
+                .order_by(JobRecord.deadline.asc())
+            )
+            records = result.scalars().all()
+            return [
+                {
+                    "id": r.id, "title": r.title, "company": r.company,
+                    "status": r.status, "url": r.url,
+                    "match_score": r.match_score,
+                    "deadline": r.deadline.isoformat() if r.deadline else "",
+                    "days_left": (r.deadline - now).days if r.deadline else None,
+                }
+                for r in records
+            ]
+
+    async def get_expired_deadlines(self) -> list[dict]:
+        """Get jobs whose deadlines have passed without application."""
+        await self.initialize()
+        async with self._session_factory() as session:
+            now = datetime.now()
+            result = await session.execute(
+                select(JobRecord)
+                .where(JobRecord.deadline.isnot(None))
+                .where(JobRecord.deadline < now)
+                .where(JobRecord.status.notin_([
+                    JobStatus.APPLIED.value, JobStatus.REJECTED.value,
+                ]))
+                .order_by(JobRecord.deadline.desc())
+            )
+            records = result.scalars().all()
+            return [
+                {
+                    "id": r.id, "title": r.title, "company": r.company,
+                    "status": r.status, "url": r.url,
+                    "deadline": r.deadline.isoformat() if r.deadline else "",
+                }
                 for r in records
             ]
 

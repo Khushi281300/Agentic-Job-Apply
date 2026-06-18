@@ -2,14 +2,62 @@
 
 import json
 
+import httpx
 import pandas as pd
 import streamlit as st
 
-from job_agent_dashboard.helpers import get_api, safe_json
+from job_agent_dashboard.helpers import get_api, safe_json, AGENT_API_URL
 
 
 def render():
     st.title("📋 Pipeline Results — Per-Job Breakdown")
+
+    # ── Export buttons ──
+    exp_col1, exp_col2, exp_col3 = st.columns(3)
+    with exp_col1:
+        try:
+            pdf_resp = httpx.get(f"{AGENT_API_URL}/export/pdf", timeout=15)
+            if pdf_resp.status_code == 200:
+                st.download_button(
+                    "📄 Download PDF Report",
+                    data=pdf_resp.content,
+                    file_name="job_applications.pdf",
+                    mime="application/pdf",
+                )
+            else:
+                st.button("📄 Download PDF Report", disabled=True, help="No data to export")
+        except Exception:
+            st.button("📄 Download PDF Report", disabled=True, help="Server unavailable")
+    with exp_col2:
+        try:
+            csv_resp = httpx.get(f"{AGENT_API_URL}/export/csv", timeout=15)
+            if csv_resp.status_code == 200:
+                st.download_button(
+                    "📊 Download CSV",
+                    data=csv_resp.content,
+                    file_name="job_applications.csv",
+                    mime="text/csv",
+                )
+            else:
+                st.button("📊 Download CSV", disabled=True, help="No data to export")
+        except Exception:
+            st.button("📊 Download CSV", disabled=True, help="Server unavailable")
+    with exp_col3:
+        try:
+            json_resp = httpx.get(f"{AGENT_API_URL}/export/json", timeout=15)
+            if json_resp.status_code == 200:
+                st.download_button(
+                    "🗂️ Download JSON",
+                    data=json_resp.content,
+                    file_name="job_applications.json",
+                    mime="application/json",
+                )
+            else:
+                st.button("🗂️ Download JSON", disabled=True, help="No data to export")
+        except Exception:
+            st.button("🗂️ Download JSON", disabled=True, help="Server unavailable")
+
+    st.divider()
 
     jobs_data = get_api("/jobs")
     if isinstance(jobs_data, dict) and "error" in jobs_data:

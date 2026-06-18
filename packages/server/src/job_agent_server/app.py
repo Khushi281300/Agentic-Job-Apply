@@ -333,6 +333,76 @@ def create_api_app(mcp_server, a2a_server, db=None, llm=None) -> FastAPI:
             raise HTTPException(status_code=503, detail="Database not initialized")
         return await db.get_all_jobs_detailed()
 
+    @app.get("/export/pdf")
+    async def export_pdf():
+        """Export all job data as a downloadable PDF report."""
+        if not db:
+            raise HTTPException(status_code=503, detail="Database not initialized")
+        import io
+        from fastapi.responses import StreamingResponse
+        from fpdf import FPDF
+
+        jobs = await db.get_all_jobs_detailed()
+
+        pdf = FPDF()
+        pdf.set_auto_page_break(auto=True, margin=15)
+        pdf.add_page()
+
+        # Title
+        pdf.set_font("Helvetica", "B", 18)
+        pdf.cell(0, 12, "Job Application Report", new_x="LMARGIN", new_y="NEXT", align="C")
+        pdf.set_font("Helvetica", "", 10)
+        from datetime import datetime as _dt
+        pdf.cell(0, 8, f"Generated: {_dt.now().strftime('%Y-%m-%d %H:%M')}", new_x="LMARGIN", new_y="NEXT", align="C")
+        pdf.ln(6)
+
+        if not jobs:
+            pdf.set_font("Helvetica", "I", 12)
+            pdf.cell(0, 10, "No jobs tracked yet.", new_x="LMARGIN", new_y="NEXT")
+        else:
+            # Summary stats
+            total = len(jobs)
+            applied = sum(1 for j in jobs if j.get("status") == "applied")
+            matched = sum(1 for j in jobs if j.get("status") == "matched")
+            rejected = sum(1 for j in jobs if j.get("status") == "rejected")
+
+            pdf.set_font("Helvetica", "B", 12)
+            pdf.cell(0, 8, "Summary", new_x="LMARGIN", new_y="NEXT")
+            pdf.set_font("Helvetica", "", 10)
+            pdf.cell(0, 6, f"Total: {total}  |  Applied: {applied}  |  Matched: {matched}  |  Rejected: {rejected}", new_x="LMARGIN", new_y="NEXT")
+            pdf.ln(4)
+
+            # Table header
+            pdf.set_font("Helvetica", "B", 9)
+            col_w = [55, 40, 25, 22, 25, 23]
+            headers = ["Title", "Company", "Score", "Status", "Source", "Discovered"]
+            for i, h in enumerate(headers):
+                pdf.cell(col_w[i], 7, h, border=1)
+            pdf.ln()
+
+            # Table rows
+            pdf.set_font("Helvetica", "", 8)
+            for j in jobs:
+                score = j.get("match_score", 0) or 0
+                title = (j.get("title", "") or "")[:30]
+                company = (j.get("company", "") or "")[:22]
+                pdf.cell(col_w[0], 6, title, border=1)
+                pdf.cell(col_w[1], 6, company, border=1)
+                pdf.cell(col_w[2], 6, f"{score:.0%}", border=1, align="C")
+                pdf.cell(col_w[3], 6, (j.get("status", "") or "").upper()[:8], border=1, align="C")
+                pdf.cell(col_w[4], 6, (j.get("source", "") or "")[:14], border=1)
+                pdf.cell(col_w[5], 6, (j.get("discovered_at", "") or "")[:10], border=1)
+                pdf.ln()
+
+        buf = io.BytesIO()
+        pdf.output(buf)
+        buf.seek(0)
+        return StreamingResponse(
+            buf,
+            media_type="application/pdf",
+            headers={"Content-Disposition": "attachment; filename=job_applications.pdf"},
+        )
+
     # ─── Status API ──────────────────────────────────────────────────────────
 
     from job_agent_server.status import tracker
@@ -719,6 +789,101 @@ def create_api_app(mcp_server, a2a_server, db=None, llm=None) -> FastAPI:
         if db is None:
             raise HTTPException(status_code=503, detail="Database not available")
         return await db.get_stats()
+
+    # ─── Runtime Configuration ───────────────────────────────────────────────
+
+    _orchestrator = mcp_server.orchestrator
+
+    @app.get("/config/search")
+    async def get_search_config():
+        """Get current search configuration."""
+        return _orchestrator.search_config.model_dump()
+
+    class SearchConfigUpdate(BaseModel):
+        titles: list[str] | None = None
+        locations: list[str] | None = None
+        min_salary: int | None = None
+        remote_only: bool | None = None
+        experience_level: str | None = None
+
+    @app.put("/config/search", dependencies=[Depends(_verify_api_key)])
+    async def update_search_config(update: SearchConfigUpdate):
+        """Update search configuration at runtime (no restart needed)."""
+        cfg = _orchestrator.search_config
+        if update.titles is not None:
+            cfg.titles = update.titles
+            _orchestrator.search_agent.titles = update.titles
+        if update.locations is not None:
+            cfg.locations = update.locations
+            _orchestrator.search_agent.locations = update.locations
+        if update.min_salary is not None:
+            cfg.min_salary = update.min_salary
+        if update.remote_only is not None:
+            cfg.remote_only = update.remote_only
+        if update.experience_level is not None:
+            cfg.experience_level = update.experience_level
+        return cfg.model_dump()
+
+    @app.get("/config/application")
+    async def get_app_config():
+        """Get current application configuration."""
+        return _orchestrator.app_config.model_dump()
+
+    class AppConfigUpdate(BaseModel):
+        min_match_score: float | None = None
+        max_applications_per_day: int | None = None
+        auto_submit: bool | None = None
+        headless: bool | None = None
+
+    @app.put("/config/application", dependencies=[Depends(_verify_api_key)])
+    async def update_app_config(update: AppConfigUpdate):
+        """Update application configuration at runtime (no restart needed)."""
+        cfg = _orchestrator.app_config
+        if update.min_match_score is not None:
+            cfg.min_match_score = max(0.0, min(1.0, update.min_match_score))
+            _orchestrator.matcher_agent.min_score = cfg.min_match_score
+        if update.max_applications_per_day is not None:
+            cfg.max_applications_per_day = max(1, update.max_applications_per_day)
+        if update.auto_submit is not None:
+            cfg.auto_submit = update.auto_submit
+        if update.headless is not None:
+            cfg.headless = update.headless
+        return cfg.model_dump()
+
+    # ─── Deadline Tracking ───────────────────────────────────────────────────
+
+    class DeadlineRequest(BaseModel):
+        job_id: str
+        deadline: str  # ISO format datetime
+
+    @app.post("/deadlines", dependencies=[Depends(_verify_api_key)])
+    async def set_deadline(req: DeadlineRequest):
+        """Set an application deadline for a job."""
+        if not db:
+            raise HTTPException(status_code=503, detail="Database not initialized")
+        from datetime import datetime as _dt
+        try:
+            dl = _dt.fromisoformat(req.deadline)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid datetime format. Use ISO format (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)")
+        ok = await db.set_deadline(req.job_id, dl)
+        if not ok:
+            raise HTTPException(status_code=404, detail="Job not found")
+        return {"status": "deadline_set", "job_id": req.job_id, "deadline": req.deadline}
+
+    @app.get("/deadlines/upcoming")
+    async def upcoming_deadlines(days: int = 14):
+        """Get jobs with deadlines in the next N days."""
+        if not db:
+            raise HTTPException(status_code=503, detail="Database not initialized")
+        return await db.get_upcoming_deadlines(days=min(days, 90))
+
+    @app.get("/deadlines/expired")
+    async def expired_deadlines():
+        """Get jobs with expired deadlines that were not applied to."""
+        if not db:
+            raise HTTPException(status_code=503, detail="Database not initialized")
+        return await db.get_expired_deadlines()
 
     # ─── Scraper Endpoints ───────────────────────────────────────────────────
 
