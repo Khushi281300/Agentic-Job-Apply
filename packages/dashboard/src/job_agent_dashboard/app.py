@@ -69,7 +69,10 @@ if page == "📊 Dashboard":
     if "error" not in stats:
         content = stats.get("content", [{}])
         if content:
-            data = json.loads(content[0].get("text", "{}"))
+            try:
+                data = json.loads(content[0].get("text", "{}") or "{}")
+            except (json.JSONDecodeError, TypeError):
+                data = {}
             col1, col2, col3, col4 = st.columns(4)
             col1.metric("Discovered", data.get("total_discovered", 0))
             col2.metric("Applied", data.get("applied", 0))
@@ -165,7 +168,10 @@ elif page == "🚀 Run Pipeline":
     if "error" not in stats:
         content = stats.get("content", [{}])
         if content:
-            data = json.loads(content[0].get("text", "{}"))
+            try:
+                data = json.loads(content[0].get("text", "{}") or "{}")
+            except (json.JSONDecodeError, TypeError):
+                data = {}
             c1, c2, c3, c4 = st.columns(4)
             c1.metric("Discovered", data.get("total_discovered", 0))
             c2.metric("Matched", data.get("matched_pending", 0))
@@ -330,7 +336,11 @@ elif page == "🔍 Search Jobs":
         if "error" not in result:
             content = result.get("content", [{}])
             if content:
-                data = json.loads(content[0].get("text", "{}"))
+                raw_text = content[0].get("text", "{}") or "{}"
+                try:
+                    data = json.loads(raw_text)
+                except (json.JSONDecodeError, TypeError):
+                    data = {}
                 st.success(f"Found {data.get('jobs_found', 0)} jobs!")
                 jobs = data.get("jobs", [])
                 if jobs:
@@ -388,7 +398,10 @@ elif page == "📝 Cover Letters":
         if "error" not in result:
             content = result.get("content", [{}])
             if content:
-                data = json.loads(content[0].get("text", "{}"))
+                try:
+                    data = json.loads(content[0].get("text", "{}") or "{}")
+                except (json.JSONDecodeError, TypeError):
+                    data = {}
                 st.success("Generated!")
                 st.text_area("Result", data.get("cover_letter", ""), height=300)
 
