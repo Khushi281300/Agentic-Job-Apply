@@ -455,6 +455,24 @@ sources:
       description: ".job-description"
     notes: "Largest Middle East job portal, most Gulf jobs include visa"
 
+  - name: talent_ae
+    type: browser_scrape
+    enabled: true
+    base_url: https://ae.talent.com
+    search_url: https://ae.talent.com/jobs?k={title}&l={location}
+    rate_limit: 4
+    wait_selector: "article[class*='JobCard_card']"
+    headers:
+      Accept-Language: "en-US,en;q=0.9"
+    selectors:
+      job_card: "article[class*='JobCard_card']"
+      title: "h2[class*='JobCard_title']"
+      company: "span[class*='JobCard_company']"
+      location: "span[class*='JobCard_location']"
+      link: "h2[class*='JobCard_title'] a"
+      description: ".JobCard_snippet"
+    notes: "Talent.com UAE - aggregates NaukriGulf, Bayt, Indeed AE and other Gulf jobs. Requires browser rendering (React SPA)."
+
   - name: dubizzle_jobs
     type: html_scrape
     enabled: true
