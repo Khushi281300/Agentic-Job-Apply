@@ -6,25 +6,25 @@
 #
 # Each source needs:
 #   - name: unique identifier
-#   - type: scraper type (api_json, html_scrape, rss)
+#   - type: scraper type (api_json, html_scrape, browser_scrape, rss)
 #   - enabled: true/false
 #   - base_url: the main URL or API endpoint
 #   - search_url: URL pattern for searching (use {title} and {location} placeholders)
 #   - rate_limit: max requests per minute
 #   - headers: optional custom headers
-#   - selectors: CSS selectors for HTML scraping (only for type: html_scrape)
+#   - selectors: CSS selectors for HTML scraping (for html_scrape and browser_scrape)
+#   - wait_selector: (browser_scrape only) CSS selector to wait for before parsing
 # ═══════════════════════════════════════════════════════════════════════════════
 
 sources:
 
   - name: indeed
-    type: html_scrape
-    enabled: true
+    type: browser_scrape
+    enabled: false  # Blocked by anti-bot (Cloudflare). Needs proxy rotation or API.
     base_url: https://www.indeed.com
     search_url: https://www.indeed.com/jobs?q={title}&l={location}&fromage=7
     rate_limit: 5
-    headers:
-      Accept: text/html
+    wait_selector: ".job_seen_beacon"
     selectors:
       job_card: ".job_seen_beacon"
       title: "h2.jobTitle a"
@@ -91,13 +91,12 @@ sources:
       id_prefix: "wwr_"
 
   - name: glassdoor
-    type: html_scrape
-    enabled: true
+    type: browser_scrape
+    enabled: false  # Blocked by anti-bot (Cloudflare). Needs proxy rotation or API.
     base_url: https://www.glassdoor.com
     search_url: https://www.glassdoor.com/Job/jobs.htm?sc.keyword={title}&locKeyword={location}
     rate_limit: 4
-    headers:
-      Accept: text/html
+    wait_selector: "[data-test='jobListing']"
     selectors:
       job_card: "[data-test='jobListing']"
       title: "[data-test='job-title']"
@@ -109,14 +108,12 @@ sources:
   # ─── India & Gulf ──────────────────────────────────────────────────────────
 
   - name: naukri
-    type: html_scrape
-    enabled: true
+    type: browser_scrape
+    enabled: false  # Blocked by Akamai anti-bot. Needs Naukri API or residential proxies.
     base_url: https://www.naukri.com
     search_url: https://www.naukri.com/{title}-jobs?k={title}&l={location}&experience=&nignbevent_src=jobsearchDeskGNB
     rate_limit: 5
-    headers:
-      Accept: text/html
-      User-Agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    wait_selector: ".srp-jobtuple-wrapper"
     selectors:
       job_card: ".srp-jobtuple-wrapper"
       title: ".title"
@@ -129,7 +126,7 @@ sources:
 
   - name: naukrigulf
     type: html_scrape
-    enabled: true
+    enabled: false  # Blocked by Akamai anti-bot (drops connection). Needs official API.
     base_url: https://www.naukrigulf.com
     search_url: https://www.naukrigulf.com/{title}-jobs?k={title}&l={location}
     rate_limit: 5

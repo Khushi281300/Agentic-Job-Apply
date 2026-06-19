@@ -104,8 +104,9 @@ def test_missing_file():
 def test_loads_real_config():
     """Smoke test: the actual config/job_sources.yaml loads without errors."""
     sources = load_sources_from_yaml("config/job_sources.yaml")
-    assert len(sources) >= 20  # We added 22+ YAML-driven sources
+    assert len(sources) >= 20  # We have 24 enabled YAML-driven sources
     names = [s.name for s in sources]
-    assert "naukri" in names
-    assert "naukrigulf" in names
+    # These are enabled and should always load
+    assert "linkedin" in names
     assert "arbeitnow" in names
+    assert "weworkremotely" in names

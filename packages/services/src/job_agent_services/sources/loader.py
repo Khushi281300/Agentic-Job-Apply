@@ -12,7 +12,7 @@ from typing import Any
 import yaml
 
 from job_agent_contracts.interfaces import JobSource
-from job_agent_services.sources.generic import ApiJsonSource, HtmlScrapeSource, RssSource
+from job_agent_services.sources.generic import ApiJsonSource, BrowserScrapeSource, HtmlScrapeSource, RssSource
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +22,7 @@ _HARDCODED_SOURCES = {"remoteok", "remotive", "remoterocketship"}
 _SOURCE_BUILDERS: dict[str, type] = {
     "api_json": ApiJsonSource,
     "html_scrape": HtmlScrapeSource,
+    "browser_scrape": BrowserScrapeSource,
     "rss": RssSource,
 }
 

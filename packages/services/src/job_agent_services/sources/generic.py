@@ -1,4 +1,4 @@
-"""Generic YAML-driven job sources — API JSON, HTML scrape, and RSS.
+"""Generic YAML-driven job sources — API JSON, HTML scrape, Browser scrape, and RSS.
 
 These classes are instantiated dynamically from config/job_sources.yaml.
 No per-source Python files needed — just add a YAML entry and restart.
@@ -193,6 +193,160 @@ class HtmlScrapeSource(BaseJobSource):
             description="",  # fetched later via fetch_details
             discovered_at=datetime.now(),
         )
+
+
+class BrowserScrapeSource(BaseJobSource):
+    """Generic job source using Playwright for JS-rendered / anti-bot pages.
+
+    Same as HtmlScrapeSource but renders the page in a real browser first.
+    Use type: browser_scrape in YAML for sites that block plain HTTP requests
+    (e.g., Naukri, Glassdoor, Indeed with bot detection).
+
+    Config fields used:
+        name, base_url, search_url, selectors, wait_selector (optional)
+    """
+
+    def __init__(self, config: dict):
+        self._config = config
+        self._name = config["name"]
+        self._base_url = config["base_url"].rstrip("/")
+        self._search_url = config["search_url"]
+        self._selectors = config.get("selectors", {})
+        self._wait_selector = config.get("wait_selector", "")
+        self._browser = None
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    async def _get_browser(self):
+        if self._browser is None:
+            from playwright.async_api import async_playwright
+            self._playwright = await async_playwright().start()
+            # Use stealth to bypass anti-bot detection
+            try:
+                from playwright_stealth import Stealth
+                stealth = Stealth()
+                browser = await self._playwright.chromium.launch(
+                    headless=True,
+                    args=["--disable-blink-features=AutomationControlled"],
+                )
+                context = await browser.new_context(
+                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    viewport={"width": 1920, "height": 1080},
+                )
+                await stealth.apply_stealth_async(context)
+                self._page = await context.new_page()
+            except ImportError:
+                # Fallback without stealth
+                browser = await self._playwright.chromium.launch(headless=True)
+                context = await browser.new_context(
+                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                )
+                self._page = await context.new_page()
+            self._browser_instance = browser
+        return self
+
+    async def close(self) -> None:
+        if hasattr(self, "_browser_instance") and self._browser_instance:
+            await self._browser_instance.close()
+            self._browser_instance = None
+        if hasattr(self, "_playwright") and self._playwright:
+            await self._playwright.stop()
+            self._playwright = None
+        self._browser = None
+        self._page = None
+
+    async def _navigate(self, url: str) -> str:
+        """Navigate and return page content."""
+        await self._page.goto(url, wait_until="networkidle", timeout=30000)
+        return await self._page.content()
+
+    async def _do_search(self, title: str, location: str, **kwargs: Any) -> list[JobListing]:
+        url = _build_url(self._search_url, title, location)
+
+        async with rate_limited_request(self._name):
+            await self._get_browser()
+            html = await self._navigate(url)
+            # Optionally wait for a specific element to appear
+            if self._wait_selector and self._page:
+                try:
+                    await self._page.wait_for_selector(self._wait_selector, timeout=10000)
+                    html = await self._page.content()
+                except Exception:
+                    pass  # Proceed anyway with whatever loaded
+
+        if not html:
+            logger.warning("%s: empty/blocked browser response", self._name)
+            return []
+
+        soup = BeautifulSoup(html, "html.parser")
+        card_sel = self._selectors.get("job_card", ".job-card")
+        cards = soup.select(card_sel)
+
+        jobs = self._parse_items(cards, lambda card: self._parse_card(card, location))
+        logger.info("%s: found %d jobs for '%s' (browser)", self._name, len(jobs), title)
+        return jobs
+
+    async def _do_fetch_details(self, url: str) -> str:
+        async with rate_limited_request(self._name):
+            await self._get_browser()
+            html = await self._navigate(url)
+
+        if not html:
+            return ""
+
+        soup = BeautifulSoup(html, "html.parser")
+        desc_sel = self._selectors.get("description", ".job-description")
+        desc_el = soup.select_one(desc_sel)
+        text = desc_el.get_text(strip=True, separator="\n") if desc_el else ""
+        return text[:5000]
+
+    def _parse_card(self, card: Any, location: str) -> JobListing | None:
+        s = self._selectors
+
+        title_el = card.select_one(s.get("title", ".job-title"))
+        title = title_el.get_text(strip=True) if title_el else None
+        if not title:
+            return None
+
+        company_el = card.select_one(s.get("company", ".company"))
+        company = company_el.get_text(strip=True) if company_el else "Unknown"
+
+        loc_el = card.select_one(s.get("location", ".location"))
+        loc = loc_el.get_text(strip=True) if loc_el else "Remote"
+
+        if not location_matches(loc, location):
+            return None
+
+        link_el = card.select_one(s.get("link", "a"))
+        href = ""
+        if link_el:
+            href = link_el.get("href", "")
+            if href and not href.startswith("http"):
+                href = f"{self._base_url}{href}"
+
+        job_id = f"{self._name}_{_slugify(title)}_{_slugify(company)}"
+
+        return JobListing(
+            id=job_id,
+            title=title,
+            company=company,
+            location=loc,
+            url=href,
+            source=JobSourceType.OTHER,
+            description="",
+            discovered_at=datetime.now(),
+        )
+
+    async def search(self, title: str, location: str, **kwargs: Any) -> list[JobListing]:
+        """Override base to reset browser on error."""
+        try:
+            return await self._do_search(title, location, **kwargs)
+        except Exception as e:
+            logger.error("%s browser search failed: %s", self._name, e)
+            await self.close()
+            return []
 
 
 class RssSource(BaseJobSource):
