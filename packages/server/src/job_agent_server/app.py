@@ -224,6 +224,70 @@ def create_api_app(mcp_server, a2a_server, db=None, llm=None) -> FastAPI:
         from job_agent_contracts.models import JobStatus
         return await db.get_jobs_by_status(JobStatus.MATCHED)
 
+    # ─── Match Test ──────────────────────────────────────────────────────────
+
+    @app.post("/match/test/{job_id}")
+    async def test_match_single(job_id: str):
+        """Run the matcher on a single job to test scoring (does NOT update DB status)."""
+        if not db or not llm:
+            raise HTTPException(status_code=503, detail="Services not initialized")
+        all_jobs = await db.get_all_jobs_detailed()
+        job_data = next((j for j in all_jobs if j["id"] == job_id), None)
+        if not job_data:
+            raise HTTPException(status_code=404, detail="Job not found")
+
+        from job_agent_contracts.models import JobListing
+        listing = JobListing.from_dict(job_data)
+        orch = app.state.container.orchestrator
+        result = await orch.matcher_agent.run(job=listing)
+        return {
+            "job_id": job_id, "title": job_data["title"], "company": job_data["company"],
+            "url": job_data.get("url", ""), "location": job_data.get("location", ""),
+            "description": job_data.get("description", ""),
+            "source": job_data.get("source", ""),
+            "discovered_at": job_data.get("discovered_at", ""),
+            "overall_score": result.overall_score,
+            "skill_match": result.skill_match, "experience_match": result.experience_match,
+            "location_match": result.location_match, "salary_match": result.salary_match,
+            "reasoning": result.reasoning,
+            "matched_skills": result.matched_skills, "missing_skills": result.missing_skills,
+        }
+
+    @app.post("/match/test-batch")
+    async def test_match_batch(limit: int = 5):
+        """Run the matcher on a batch of discovered jobs. Returns scores."""
+        if not db or not llm:
+            raise HTTPException(status_code=503, detail="Services not initialized")
+        from job_agent_contracts.models import JobListing, JobStatus as JS
+        rows = await db.get_jobs_by_status(JS.DISCOVERED)
+        rows = rows[:limit]
+        if not rows:
+            return {"message": "No discovered jobs to match", "results": []}
+
+        orch = app.state.container.orchestrator
+        results = []
+        for r in rows:
+            listing = JobListing.from_dict(r)
+            try:
+                match = await orch.matcher_agent.run(job=listing)
+                results.append({
+                    "job_id": r["id"], "title": r["title"], "company": r["company"],
+                    "url": r.get("url", ""), "location": r.get("location", ""),
+                    "description": r.get("description", ""),
+                    "source": r.get("source", ""),
+                    "discovered_at": r.get("discovered_at", ""),
+                    "score": match.overall_score, "reasoning": match.reasoning,
+                    "matched_skills": match.matched_skills,
+                    "missing_skills": match.missing_skills,
+                    "skill_match": match.skill_match,
+                    "experience_match": match.experience_match,
+                    "location_match": match.location_match,
+                    "salary_match": match.salary_match,
+                })
+            except Exception as e:
+                results.append({"job_id": r["id"], "title": r["title"], "error": str(e)})
+        return {"matched": len([r for r in results if r.get("score", 0) >= 0.6]), "total": len(results), "results": results}
+
     @app.get("/jobs/{job_id}")
     async def get_job_detail(job_id: str):
         """Get full details for a single job (match scores, cover letter, etc.)."""
@@ -460,6 +524,18 @@ def create_api_app(mcp_server, a2a_server, db=None, llm=None) -> FastAPI:
                 for r in records
             ],
         }
+
+    # ─── Pipeline Logs (persisted) ─────────────────────────────────────────
+
+    @app.get("/pipeline/logs")
+    async def pipeline_logs(run_id: str | None = None, limit: int = 100):
+        """Get persisted pipeline logs, optionally filtered by run_id."""
+        return {"logs": await db.get_pipeline_logs(run_id=run_id, limit=limit)}
+
+    @app.get("/pipeline/runs")
+    async def pipeline_runs(limit: int = 20):
+        """List recent pipeline runs."""
+        return {"runs": await db.get_pipeline_runs(limit=limit)}
 
     # ─── Source Health Monitor ─────────────────────────────────────────────
 

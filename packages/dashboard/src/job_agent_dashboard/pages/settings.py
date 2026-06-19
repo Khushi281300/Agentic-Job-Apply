@@ -2,10 +2,9 @@
 
 from pathlib import Path
 
-import httpx
 import streamlit as st
 
-from job_agent_dashboard.helpers import post_api, get_api, AGENT_API_URL
+from job_agent_dashboard.helpers import post_api, get_api, upload_file
 
 
 def render():
@@ -21,24 +20,16 @@ def render():
     if uploaded is not None:
         if st.button("⬆️ Upload & Parse Resume"):
             with st.spinner("Uploading and parsing resume..."):
-                try:
-                    resp = httpx.post(
-                        f"{AGENT_API_URL}/profile/upload",
-                        files={"file": (uploaded.name, uploaded.getvalue(), "application/pdf")},
-                        timeout=60,
-                    )
-                    if resp.status_code == 200:
-                        result = resp.json()
-                        if result.get("status") == "uploaded":
-                            st.success(f"Resume uploaded and parsed! Saved to `{result.get('path')}`")
-                            if result.get("profile"):
-                                st.json(result["profile"])
-                        else:
-                            st.warning(f"Uploaded but parsing failed: {result.get('error', 'unknown')}")
+                result = upload_file("/profile/upload", uploaded.name, uploaded.getvalue())
+                if "error" not in result:
+                    if result.get("status") == "uploaded":
+                        st.success(f"Resume uploaded and parsed! Saved to `{result.get('path')}`")
+                        if result.get("profile"):
+                            st.json(result["profile"])
                     else:
-                        st.error(f"Upload failed: {resp.text}")
-                except Exception as e:
-                    st.error(f"Upload error: {e}")
+                        st.warning(f"Uploaded but parsing failed: {result.get('error', 'unknown')}")
+                else:
+                    st.error(f"Upload failed: {result['error']}")
 
     # Show current profile
     profile = get_api("/profile")

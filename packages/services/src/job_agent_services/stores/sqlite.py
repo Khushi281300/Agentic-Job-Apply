@@ -5,7 +5,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import Column, DateTime, Float, Index, String, Text, select, func
+from sqlalchemy import Column, DateTime, Float, Index, Integer, String, Text, select, func
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
@@ -52,6 +52,24 @@ class JobRecord(Base):
         Index("ix_jobs_status_score", "status", "match_score"),
         Index("ix_jobs_outcome", "outcome"),
         Index("ix_jobs_deadline", "deadline"),
+    )
+
+
+class PipelineLogRecord(Base):
+    __tablename__ = "pipeline_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    run_id = Column(String, nullable=False)
+    timestamp = Column(String, nullable=False)
+    node = Column(String, nullable=False)
+    direction = Column(String, nullable=False)  # input / output / error
+    message = Column(Text, default="")
+    data = Column(Text, default="{}")
+    duration_ms = Column(Float, default=0)
+
+    __table_args__ = (
+        Index("ix_pipeline_logs_run_id", "run_id"),
+        Index("ix_pipeline_logs_timestamp", "timestamp"),
     )
 
 
@@ -209,11 +227,7 @@ class Database:
                 select(JobRecord).where(JobRecord.status == status.value)
             )
             records = result.scalars().all()
-            return [
-                {"id": r.id, "title": r.title, "company": r.company,
-                 "url": r.url, "score": r.match_score, "status": r.status}
-                for r in records
-            ]
+            return [self._record_to_dict(r) for r in records]
 
     async def get_all_jobs_detailed(self) -> list[dict]:
         """Get all jobs with full match/tailored data for results view."""
@@ -223,24 +237,30 @@ class Database:
                 select(JobRecord).order_by(JobRecord.discovered_at.desc())
             )
             records = result.scalars().all()
-            return [
-                {
-                    "id": r.id,
-                    "title": r.title,
-                    "company": r.company,
-                    "location": r.location or "",
-                    "url": r.url,
-                    "source": r.source or "",
-                    "status": r.status,
-                    "match_score": r.match_score,
-                    "match_data": r.match_data or "{}",
-                    "tailored_data": r.tailored_data or "{}",
-                    "discovered_at": r.discovered_at.isoformat() if r.discovered_at else "",
-                    "applied_at": r.applied_at.isoformat() if r.applied_at else "",
-                    "error": r.error or "",
-                }
-                for r in records
-            ]
+            return [self._record_to_dict(r, include_tailored=True) for r in records]
+
+    @staticmethod
+    def _record_to_dict(record: "JobRecord", include_tailored: bool = False) -> dict:
+        """Convert a JobRecord ORM instance to a plain dict."""
+        d = {
+            "id": record.id,
+            "title": record.title,
+            "company": record.company,
+            "location": record.location or "",
+            "url": record.url,
+            "source": record.source or "",
+            "status": record.status,
+            "description": record.description or "",
+            "score": record.match_score,
+            "match_score": record.match_score,
+            "match_data": record.match_data or "{}",
+            "discovered_at": record.discovered_at.isoformat() if record.discovered_at else "",
+        }
+        if include_tailored:
+            d["tailored_data"] = record.tailored_data or "{}"
+            d["applied_at"] = record.applied_at.isoformat() if record.applied_at else ""
+            d["error"] = record.error or ""
+        return d
 
     async def get_stats(self) -> dict:
         await self.initialize()
@@ -458,3 +478,75 @@ class Database:
                 })
 
             return timeline
+
+    # ─── Pipeline Logs ───────────────────────────────────────────────────────
+
+    async def save_pipeline_log(
+        self, run_id: str, timestamp: str, node: str,
+        direction: str, message: str, data: str = "{}", duration_ms: float = 0,
+    ) -> None:
+        """Persist a single pipeline log entry."""
+        await self.initialize()
+        async with self._session_factory() as session:
+            session.add(PipelineLogRecord(
+                run_id=run_id,
+                timestamp=timestamp,
+                node=node,
+                direction=direction,
+                message=message,
+                data=data,
+                duration_ms=duration_ms,
+            ))
+            await session.commit()
+
+    async def get_pipeline_logs(
+        self, run_id: str | None = None, limit: int = 100,
+    ) -> list[dict]:
+        """Get pipeline logs, optionally filtered by run_id."""
+        await self.initialize()
+        async with self._session_factory() as session:
+            query = select(PipelineLogRecord).order_by(PipelineLogRecord.id.desc())
+            if run_id:
+                query = query.where(PipelineLogRecord.run_id == run_id)
+            query = query.limit(limit)
+            result = await session.execute(query)
+            records = result.scalars().all()
+            return [
+                {
+                    "id": r.id,
+                    "run_id": r.run_id,
+                    "timestamp": r.timestamp,
+                    "node": r.node,
+                    "direction": r.direction,
+                    "message": r.message,
+                    "data": r.data,
+                    "duration_ms": r.duration_ms,
+                }
+                for r in reversed(records)  # chronological order
+            ]
+
+    async def get_pipeline_runs(self, limit: int = 20) -> list[dict]:
+        """Get list of distinct pipeline runs with start time and log count."""
+        await self.initialize()
+        async with self._session_factory() as session:
+            from sqlalchemy import distinct
+            result = await session.execute(
+                select(
+                    PipelineLogRecord.run_id,
+                    func.min(PipelineLogRecord.timestamp).label("started_at"),
+                    func.max(PipelineLogRecord.timestamp).label("last_activity"),
+                    func.count().label("log_count"),
+                )
+                .group_by(PipelineLogRecord.run_id)
+                .order_by(func.max(PipelineLogRecord.timestamp).desc())
+                .limit(limit)
+            )
+            return [
+                {
+                    "run_id": row.run_id,
+                    "started_at": row.started_at,
+                    "last_activity": row.last_activity,
+                    "log_count": row.log_count,
+                }
+                for row in result.all()
+            ]

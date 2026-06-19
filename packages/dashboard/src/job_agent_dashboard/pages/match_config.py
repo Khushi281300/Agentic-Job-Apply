@@ -2,19 +2,7 @@
 
 import streamlit as st
 
-from job_agent_dashboard.helpers import get_api_live, post_api, AGENT_API_URL
-
-import httpx
-
-
-def _put_api(endpoint: str, data: dict):
-    """API PUT call."""
-    try:
-        resp = httpx.put(f"{AGENT_API_URL}{endpoint}", json=data, timeout=10)
-        resp.raise_for_status()
-        return resp.json()
-    except Exception as e:
-        return {"error": str(e)}
+from job_agent_dashboard.helpers import get_api_live, put_api
 
 
 def render():
@@ -64,7 +52,7 @@ def render():
     if st.button("💾 Save Search Settings", key="save_search"):
         new_titles = [t.strip() for t in titles.split("\n") if t.strip()]
         new_locations = [l.strip() for l in locations.split("\n") if l.strip()]
-        result = _put_api("/config/search", {
+        result = put_api("/config/search", {
             "titles": new_titles,
             "locations": new_locations,
             "min_salary": min_salary,
@@ -110,7 +98,7 @@ def render():
     )
 
     if st.button("💾 Save Application Settings", key="save_app"):
-        result = _put_api("/config/application", {
+        result = put_api("/config/application", {
             "min_match_score": min_score,
             "max_applications_per_day": max_apps,
             "auto_submit": auto_submit,

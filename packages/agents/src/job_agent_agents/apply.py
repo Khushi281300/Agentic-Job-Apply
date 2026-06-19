@@ -106,15 +106,14 @@ class ApplicationAgent(BaseAgent):
             subject = f"Application: {job.title} - {self.user.name}"
 
             # Send via email applicant service
-            success = await self._email_applicant.apply(
+            result = await self._email_applicant.send_application(
                 to_email=job.contact_email,
                 subject=subject,
-                body=cover_text,
+                body_html=cover_text,
                 resume_path=self.resume_path,
-                job_id=job.id,
             )
 
-            if success:
+            if result.success:
                 await self.db.update_status(job.id, JobStatus.APPLIED)
                 await self._emit(EventType.JOB_EMAILED, {"job_id": job.id, "to": job.contact_email})
 

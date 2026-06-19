@@ -132,7 +132,7 @@ class Orchestrator(BaseAgent):
                 "search_titles": self.search_config.titles,
                 "search_locations": self.search_config.locations,
                 "min_match_score": self.app_config.min_match_score,
-                "auto_submit": self.app_config.auto_submit,
+                "auto_submit": kwargs.get("auto_submit", self.app_config.auto_submit),
                 "max_applications": remaining,
                 "discovered_jobs": [],
                 "current_job": None,

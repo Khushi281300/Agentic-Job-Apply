@@ -26,6 +26,9 @@ def main(host: str = "0.0.0.0", port: int = 8000) -> None:
     # Wire status tracker into the node factory
     set_status_tracker(tracker)
 
+    # Wire DB into tracker for log persistence
+    tracker.set_db(container.db)
+
     orchestrator = container.orchestrator
 
     # Build protocol servers
@@ -44,6 +47,8 @@ def main(host: str = "0.0.0.0", port: int = 8000) -> None:
         db=container.db,
         llm=container.llm,
     )
+
+    app.state.container = container
 
     uvicorn.run(app, host=host, port=port)
 

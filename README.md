@@ -37,7 +37,10 @@ An **agentic AI system** that automatically searches for remote jobs, evaluates 
 - **Async scheduler** — cron-free recurring pipeline runs
 
 ### Dashboard & Analytics
-- **Real-time dashboard** — Streamlit UI with WebSocket live updates
+- **Real-time dashboard** — Streamlit UI with live pipeline logging
+- **Live pipeline log** — real-time activity feed showing every agent step (search → match → tailor → apply)
+- **DB-persisted pipeline logs** — all pipeline runs saved to SQLite with full IO history
+- **Past pipeline runs** — browse logs from previous runs by run ID
 - **Application timeline** — visual journey of each job (discovered → applied → outcome)
 - **Success rate tracking** — analytics by source, score range, outcomes
 - **Interview prep generator** — AI-generated Q&A for applied jobs
@@ -90,12 +93,14 @@ job-apply-agent/
 │   │   └── ...             # Scheduler, webhooks, digest, etc.
 │   ├── agents/             # AI agents + LangGraph workflow
 │   │   ├── llm_utils.py    # SafeLLMCaller (reusable LLM patterns)
+│   │   ├── workflows/      # LangGraph graph + node factory
 │   │   └── ...
 │   ├── server/             # FastAPI server (MCP + A2A + REST API)
 │   └── dashboard/          # Streamlit real-time UI
 ├── cli/                    # CLI commands
 ├── config/                 # Job source configuration
-├── tests/                  # Unit + integration + contract tests (60 passing)
+├── data/                   # User profile (profile.json), vector DB, screenshots
+├── tests/                  # Unit + integration + contract tests (67 passing)
 ├── start.py                # One command to start everything
 ├── docker-compose.yml      # Containerized deployment
 └── pyproject.toml          # Workspace root
@@ -162,9 +167,8 @@ docker-compose up
 | Page | Description |
 |------|-------------|
 | 📊 **Dashboard** | Overview metrics and status |
-| 🚀 **Run Pipeline** | Start full end-to-end pipeline with live status |
+| 🚀 **Run Pipeline** | Start/stop pipeline with **live real-time activity log**, progress bar, stats, and past run history |
 | 📋 **Pipeline Results** | View matched jobs, scores, cover letters |
-| 🔍 **Search Jobs** | Trigger job searches across all sources |
 | 📋 **Review Queue** | Approve/reject matched jobs |
 | 📝 **Cover Letters** | View generated cover letters |
 | 🎯 **Interview Prep** | AI-generated questions for applied jobs |
@@ -174,8 +178,18 @@ docker-compose up
 | 💰 **Salary Insights** | Market compensation ranges |
 | 📅 **Timeline** | Application journey visualization |
 | 🗺️ **Pipeline Graph** | Visual workflow graph |
-| 📡 **Live Status** | WebSocket real-time updates |
+| 🔄 **Retry Queue** | Failed jobs retry management |
+| 📡 **Webhooks** | Configure webhook integrations |
 | ⚙️ **Settings** | Configuration management |
+
+> **Run Pipeline** page features:
+> - Pipeline configuration (job titles, locations, auto-apply toggle)
+> - Start/Stop controls
+> - 6-step progress bar (Idle → Searching → Matching → Tailoring → Applying → Completed)
+> - Live stats (searched, matched, applied, emailed, errors)
+> - Real-time activity log with human-readable messages for every agent step
+> - Error display section
+> - Past Pipeline Runs browser with DB-persisted logs
 
 ---
 
@@ -201,6 +215,15 @@ docker-compose up
 | `GET` | `/follow-ups` | Applications due for follow-up |
 | `POST` | `/interview-prep/{id}` | Generate interview questions |
 | `GET` | `/timeline` | Application journey timeline |
+
+### Pipeline Logs & Matching
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/pipeline/logs` | Get persisted pipeline logs (`?run_id=X&limit=100`) |
+| `GET` | `/pipeline/runs` | List recent pipeline runs (`?limit=20`) |
+| `POST` | `/match/test/{id}` | Test match scoring on a single job |
+| `POST` | `/match/test-batch` | Batch match test on discovered jobs (`?limit=5`) |
 
 ### Intelligence
 
@@ -277,7 +300,7 @@ Add to your MCP client config:
 # Run all tests
 python -m pytest tests/ -v
 
-# 60 tests passing (unit + integration + contract + e2e)
+# 67 tests passing (unit + integration + contract + e2e)
 ```
 
 Test coverage includes:
@@ -288,6 +311,35 @@ Test coverage includes:
 
 ---
 
-## 📄 License
+## � User Profile
+
+Create `data/profile.json` with your resume data for accurate job matching:
+
+```json
+{
+  "name": "Your Name",
+  "email": "you@example.com",
+  "title": "AI Software Engineer",
+  "summary": "Your professional summary...",
+  "skills": ["Python", "LangChain", "FastAPI", ...],
+  "experience_years": 3,
+  "education": ["B.E. in Computer Science - University"],
+  "certifications": ["AWS Solutions Architect"],
+  "work_history": [
+    {
+      "title": "AI Engineer",
+      "company": "Company",
+      "duration": "2024 - Present",
+      "description": "Built agentic AI systems..."
+    }
+  ]
+}
+```
+
+The matcher uses this profile to score jobs against your skills, experience, and preferences. Without a profile, match scores will be low.
+
+---
+
+## �📄 License
 
 MIT

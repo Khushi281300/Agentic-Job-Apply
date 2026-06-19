@@ -46,6 +46,17 @@ class TriggerResponse(BaseModel):
 async def trigger_search(request: TriggerSearchRequest, background_tasks: BackgroundTasks):
     if _orchestrator is None:
         raise HTTPException(status_code=503, detail="Orchestrator not initialized")
+
+    # Start a new pipeline run for log tracking
+    from job_agent_server.status import tracker, PipelinePhase
+    run_id = tracker.start_run()
+    tracker.set_phase(PipelinePhase.SEARCHING)
+    tracker.record_input("pipeline", {
+        "titles": request.titles,
+        "locations": request.locations,
+        "auto_apply": request.auto_apply,
+    })
+
     background_tasks.add_task(
         _run_search,
         titles=request.titles,
@@ -54,6 +65,7 @@ async def trigger_search(request: TriggerSearchRequest, background_tasks: Backgr
     )
     return TriggerResponse(
         status="accepted",
+        task_id=run_id,
         message=f"Search triggered for {request.titles} in {request.locations}",
     )
 
@@ -78,13 +90,15 @@ async def webhook_status():
 
 
 async def _run_search(titles: list[str], locations: list[str], auto_apply: bool) -> None:
+    from job_agent_server.status import tracker, PipelinePhase
     try:
-        if auto_apply:
-            await _orchestrator.run()
-        else:
-            await _orchestrator.run_search_only()
+        # Always use the graph so status tracker gets updates via node wrappers
+        await _orchestrator.run(auto_submit=auto_apply)
+        tracker.set_phase(PipelinePhase.COMPLETED)
     except Exception as e:
         logger.error("Webhook search failed: %s", e)
+        tracker.record_error("pipeline", e)
+        tracker.set_phase(PipelinePhase.FAILED)
 
 
 async def _run_apply(job_id: str) -> None:

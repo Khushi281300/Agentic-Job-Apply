@@ -70,6 +70,14 @@ class GraphNodes:
 
     async def search_node(self, state: JobApplicationState) -> dict:
         jobs = await self.search_agent.run()
+
+        # If search returned no NEW jobs, pull unmatched jobs from DB
+        if not jobs:
+            from job_agent_contracts.models import JobStatus
+            db_rows = await self.db.get_jobs_by_status(JobStatus.DISCOVERED)
+            if db_rows:
+                jobs = [JobListing.from_dict(r) for r in db_rows]
+
         return {
             "discovered_jobs": jobs,
             "jobs_to_match": jobs,
@@ -84,9 +92,9 @@ class GraphNodes:
         )
         enriched = [
             r for r in results
-            if not isinstance(r, BaseException) and r.description
+            if not isinstance(r, BaseException)
         ]
-        return {"jobs_to_match": enriched}
+        return {"jobs_to_match": enriched if enriched else jobs_to_match}
 
     async def match_node(self, state: JobApplicationState) -> dict:
         min_score = state.get("min_match_score", 0.6)

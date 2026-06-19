@@ -2,7 +2,7 @@
 
 import streamlit as st
 
-from job_agent_dashboard.helpers import get_api, AGENT_API_URL
+from job_agent_dashboard.helpers import get_api, download_bytes
 
 
 def render():
@@ -51,8 +51,10 @@ def render():
     st.subheader("📤 Export Data")
     c1, c2 = st.columns(2)
     with c1:
-        if st.button("📥 Download CSV"):
-            st.markdown(f"[Download CSV]({AGENT_API_URL}/export/csv)")
+        resp = download_bytes("/export/csv")
+        if resp:
+            st.download_button("📥 Download CSV", data=resp.content, file_name="jobs.csv", mime="text/csv")
     with c2:
-        if st.button("📥 Download JSON"):
-            st.markdown(f"[Download JSON]({AGENT_API_URL}/export/json)")
+        resp = download_bytes("/export/json")
+        if resp:
+            st.download_button("📥 Download JSON", data=resp.content, file_name="jobs.json", mime="application/json")

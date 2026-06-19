@@ -75,6 +75,25 @@ class JobListing(BaseModel):
     contact_email: str = ""
     apply_instructions: str = ""
 
+    @classmethod
+    def from_dict(cls, d: dict) -> "JobListing":
+        """Create a JobListing from a DB row / API dict."""
+        status_val = d.get("status", "discovered")
+        try:
+            status = JobStatus(status_val)
+        except ValueError:
+            status = JobStatus.DISCOVERED
+        return cls(
+            id=d.get("id", ""),
+            title=d["title"],
+            company=d["company"],
+            location=d.get("location", ""),
+            url=d.get("url", ""),
+            source=d.get("source", "other"),
+            description=d.get("description", ""),
+            status=status,
+        )
+
 
 class MatchResult(BaseModel):
     job_id: str

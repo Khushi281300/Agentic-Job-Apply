@@ -1,11 +1,15 @@
 """Pipeline status tracker - records state, raw I/O, and errors.
 
 Keeps a bounded in-memory log of pipeline activity for the status API.
+Optionally persists logs to the database for historical viewing.
 """
 
 from __future__ import annotations
 
+import asyncio
+import json
 import time
+import uuid
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -61,7 +65,7 @@ class PipelineStatus:
 
 
 class StatusTracker:
-    """In-memory status tracker with bounded history.
+    """In-memory status tracker with bounded history and optional DB persistence.
 
     Usage:
         tracker = StatusTracker()
@@ -76,10 +80,47 @@ class StatusTracker:
         self._io_log: deque[IORecord] = deque(maxlen=max_records)
         self._errors: deque[IORecord] = deque(maxlen=50)
         self._start_times: dict[str, float] = {}
+        self._db = None  # Optional Database instance for persistence
+        self._run_id: str | None = None
 
     @property
     def status(self) -> PipelineStatus:
         return self._status
+
+    @property
+    def run_id(self) -> str | None:
+        return self._run_id
+
+    def set_db(self, db) -> None:
+        """Attach a Database instance for log persistence."""
+        self._db = db
+
+    def start_run(self) -> str:
+        """Start a new pipeline run — generates a unique run_id and resets state."""
+        self._run_id = uuid.uuid4().hex[:12]
+        self.reset()
+        return self._run_id
+
+    def _persist_log(self, timestamp: str, node: str, direction: str,
+                     data: Any, duration_ms: float = 0) -> None:
+        """Fire-and-forget log persistence to DB."""
+        if not self._db or not self._run_id:
+            return
+        message = _format_log_message(node, direction, data)
+        data_str = json.dumps(data, default=str) if not isinstance(data, str) else data
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(self._db.save_pipeline_log(
+                run_id=self._run_id,
+                timestamp=timestamp,
+                node=node,
+                direction=direction,
+                message=message,
+                data=data_str,
+                duration_ms=duration_ms,
+            ))
+        except RuntimeError:
+            pass  # No event loop — skip persistence
 
     def set_phase(self, phase: PipelinePhase, job: dict | None = None) -> None:
         now = datetime.now().isoformat()
@@ -94,13 +135,16 @@ class StatusTracker:
 
     def record_input(self, node: str, data: Any) -> None:
         self._start_times[node] = time.time()
+        now = datetime.now().isoformat()
+        safe = _safe_serialize(data)
         self._io_log.append(IORecord(
-            timestamp=datetime.now().isoformat(),
+            timestamp=now,
             node=node,
             direction="input",
-            data=_safe_serialize(data),
+            data=safe,
         ))
-        self._status.last_activity = datetime.now().isoformat()
+        self._status.last_activity = now
+        self._persist_log(now, node, "input", safe)
 
         # Auto-advance phase based on which node starts
         _phase_map = {
@@ -121,15 +165,17 @@ class StatusTracker:
         if node in self._start_times:
             duration = (time.time() - self._start_times.pop(node)) * 1000
 
+        now = datetime.now().isoformat()
         safe_data = _safe_serialize(data)
         self._io_log.append(IORecord(
-            timestamp=datetime.now().isoformat(),
+            timestamp=now,
             node=node,
             direction="output",
             data=safe_data,
             duration_ms=round(duration, 1),
         ))
-        self._status.last_activity = datetime.now().isoformat()
+        self._status.last_activity = now
+        self._persist_log(now, node, "output", safe_data, round(duration, 1))
 
         # Auto-update stats from node output summaries
         if isinstance(safe_data, dict):
@@ -147,16 +193,19 @@ class StatusTracker:
                     self._status.stats["applied"] = applied
 
     def record_error(self, node: str, error: str | Exception) -> None:
+        now = datetime.now().isoformat()
+        error_str = str(error)
         record = IORecord(
-            timestamp=datetime.now().isoformat(),
+            timestamp=now,
             node=node,
             direction="error",
-            data=str(error),
+            data=error_str,
         )
         self._io_log.append(record)
         self._errors.append(record)
         self._status.stats["errors"] += 1
-        self._status.last_activity = datetime.now().isoformat()
+        self._status.last_activity = now
+        self._persist_log(now, node, "error", error_str)
 
     def inc_stat(self, key: str, amount: int = 1) -> None:
         if key in self._status.stats:
@@ -169,6 +218,7 @@ class StatusTracker:
     def get_full_status(self) -> dict:
         """Return full status payload for the API."""
         return {
+            "run_id": self._run_id,
             "pipeline": self._status.to_dict(),
             "recent_io": [
                 {
@@ -189,6 +239,37 @@ class StatusTracker:
                 for r in list(self._errors)
             ],
         }
+
+
+def _format_log_message(node: str, direction: str, data: Any) -> str:
+    """Generate a human-readable log message from node I/O."""
+    if direction == "error":
+        return f"{node.title()} failed — {data}" if isinstance(data, str) else f"{node.title()} error"
+
+    messages = {
+        ("pipeline", "input"): lambda d: f"Pipeline started — searching for {', '.join(d.get('titles', []))} in {', '.join(d.get('locations', []))}" if isinstance(d, dict) else "Pipeline started",
+        ("search", "input"): "Searching for jobs across configured sources…",
+        ("search", "output"): lambda d: f"Search complete — found {d.get('job_count', 0)} jobs" if isinstance(d, dict) else "Search complete",
+        ("fetch_details", "input"): "Fetching full job descriptions…",
+        ("fetch_details", "output"): "Job details enriched",
+        ("match", "input"): "Matching jobs against profile & resume…",
+        ("match", "output"): lambda d: f"Matching complete — {d.get('matched', 0)} passed threshold" if isinstance(d, dict) else "Matching complete",
+        ("tailor", "input"): "Tailoring resumes for matched positions…",
+        ("tailor", "output"): "Tailoring done — custom resumes generated",
+        ("human_review", "input"): "Waiting for review",
+        ("human_review", "output"): "Review completed",
+        ("apply", "input"): "Submitting applications…",
+        ("apply", "output"): lambda d: f"Applications submitted — {d.get('applied', 0)} sent" if isinstance(d, dict) else "Applications submitted",
+        ("email", "input"): "Sending application emails…",
+        ("email", "output"): "Emails sent",
+    }
+    key = (node, direction)
+    msg = messages.get(key)
+    if msg is None:
+        return f"{node.title()} — {direction}"
+    if callable(msg):
+        return msg(data)
+    return msg
 
 
 def _safe_serialize(data: Any, max_len: int = 2000) -> Any:
